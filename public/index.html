@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Gantt Server - Web Test UI</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt/dist/frappe-gantt.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #667eea;
+            --secondary: #764ba2;
+            --success: #66bb6a;
+            --error: #ef5350;
+            --warning: #ff9800;
+            --text-dark: #333;
+            --text-light: #666;
+            --bg-light: #f5f5f5;
+            --bg-white: #ffffff;
+            --border: #e0e0e0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-light);
+            color: var(--text-dark);
+        }
+
+        .navbar {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 15px 30px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .navbar h1 {
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .navbar p {
+            font-size: 13px;
+            opacity: 0.9;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 30px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .panel {
+            background: var(--bg-white);
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .panel-header {
+            background: #f9f9f9;
+            padding: 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-body {
+            padding: 20px;
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        textarea, select, input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            background: #fafafa;
+        }
+
+        textarea {
+            min-height: 300px;
+            resize: vertical;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        textarea:focus, select:focus, input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: var(--bg-white);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #f0f0f0;
+            color: var(--text-dark);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            background: #e8e8e8;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+        }
+
+        .btn-danger {
+            background: var(--error);
+            color: white;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .tab-button {
+            flex: 1;
+            padding: 12px;
+            background: #f9f9f9;
+            border: none;
+            border-bottom: 3px solid transparent;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-light);
+            transition: all 0.3s;
+        }
+
+        .tab-button.active {
+            background: var(--bg-white);
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .validation-result {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+
+        .validation-result.success {
+            background: #e8f5e9;
+            border: 1px solid #4caf50;
+            color: #1b5e20;
+        }
+
+        .validation-result.error {
+            background: #ffebee;
+            border: 1px solid #ef5350;
+            color: #b71c1c;
+        }
+
+        .validation-result.warning {
+            background: #fff3e0;
+            border: 1px solid #ff9800;
+            color: #e65100;
+        }
+
+        .error-list {
+            list-style: none;
+            margin-top: 10px;
+        }
+
+        .error-list li {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
+
+        .error-list li:last-child {
+            border-bottom: none;
+        }
+
+        .error-list strong {
+            display: inline-block;
+            min-width: 80px;
+            color: #333;
+        }
+
+        .example-button {
+            display: inline-block;
+            padding: 8px 15px;
+            background: #f0f0f0;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            transition: all 0.3s;
+        }
+
+        .example-button:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+
+        .preview-container {
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            overflow: hidden;
+            background: #fafafa;
+        }
+
+        .preview-content {
+            max-height: 600px;
+            overflow: auto;
+        }
+
+        .preview-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .preview-error {
+            padding: 20px;
+            color: var(--error);
+            text-align: center;
+        }
+
+        .code-block {
+            background: #f9f9f9;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 15px;
+            overflow-x: auto;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .code-block code {
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: #333;
+        }
+
+        .copy-button {
+            padding: 4px 12px;
+            font-size: 11px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 2px;
+            cursor: pointer;
+            float: right;
+            margin-bottom: 10px;
+        }
+
+        .copy-button:hover {
+            background: #5568d3;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            color: #1565c0;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .info-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .panel-body {
+                max-height: none;
+            }
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            color: var(--primary);
+            font-size: 13px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: var(--text-light);
+            font-size: 12px;
+            border-top: 1px solid var(--border);
+            margin-top: 30px;
+        }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <h1>📊 MCP Gantt Server - Web Test UI</h1>
+        <p>Create and preview interactive Gantt diagrams with validation and real-time feedback</p>
+    </div>
+
+    <div class="container">
+        <!-- Left Panel: Input -->
+        <div class="panel">
+            <div class="panel-header">✏️ Input & Examples</div>
+            <div class="panel-body">
+                <div class="info-box">
+                    <strong>💡 Getting Started:</strong>
+                    Click on one of the example buttons below, or paste your own JSON task data.
+                </div>
+
+                <div class="form-group">
+                    <label>📋 Quick Examples</label>
+                    <div style="margin-bottom: 15px;">
+                        <button class="example-button" onclick="loadExample('simple')">Simple (4 tasks)</button>
+                        <button class="example-button" onclick="loadExample('advanced')">Advanced (7 tasks)</button>
+                        <button class="example-button" onclick="loadExample('withDependencies')">With Dependencies</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>📝 JSON Input (Tasks + Options)</label>
+                    <textarea id="taskInput" placeholder='Paste JSON here or use examples...
+{
+  "tasks": [
+    {
+      "id": "1",
+      "name": "Task Name",
+      "start": "2024-01-01",
+      "end": "2024-01-15",
+      "progress": 50,
+      "dependencies": "",
+      "priority": "high"
+    }
+  ],
+  "options": {
+    "view_mode": "Month"
+  }
+}'></textarea>
+                </div>
+
+                <div class="button-group">
+                    <button class="btn-primary" onclick="generateGantt()">
+                        🚀 Generate Gantt
+                    </button>
+                    <button class="btn-secondary" onclick="validateOnly()">
+                        ✓ Validate Only
+                    </button>
+                </div>
+
+                <button class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="copyInput()">
+                    📋 Copy JSON to Clipboard
+                </button>
+
+                <div id="validationStatus" style="margin-top: 20px;"></div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Preview -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>👁️ Preview & Output</span>
+                <span id="loadingSpinner" class="loading" style="float: right;">
+                    <span class="spinner"></span>Generating...
+                </span>
+            </div>
+            <div class="panel-body">
+                <div class="tabs">
+                    <button class="tab-button active" onclick="switchTab('preview')">Preview</button>
+                    <button class="tab-button" onclick="switchTab('html')">HTML Code</button>
+                </div>
+
+                <div id="preview" class="tab-content active">
+                    <div id="previewContent" class="preview-container">
+                        <div style="padding: 40px; text-align: center; color: var(--text-light);">
+                            👈 Click "Generate Gantt" to see preview here
+                        </div>
+                    </div>
+                </div>
+
+                <div id="html" class="tab-content">
+                    <div style="margin-bottom: 10px;">
+                        <button class="copy-button" onclick="copyHTML()">📋 Copy HTML</button>
+                    </div>
+                    <div id="htmlCode" class="code-block">
+                        <code>HTML output will appear here...</code>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <button class="btn-success" style="width: 100%;" onclick="downloadHTML()">
+                        💾 Download as HTML File
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>🔌 MCP Gantt Server v1.0 | Powered by Frappe Gantt & Model Context Protocol</p>
+        <p style="margin-top: 8px; font-size: 11px;">
+            <a href="#" style="color: var(--primary); text-decoration: none;" onclick="showAPI(event)">View API Docs</a> •
+            <a href="https://frappe.io/gantt" style="color: var(--primary); text-decoration: none;" target="_blank">Frappe Gantt Docs</a>
+        </p>
+    </div>
+
+    <script>
+        let currentHTML = '';
+
+        // Load example data
+        async function loadExample(type) {
+            try {
+                const response = await fetch('/api/examples');
+                const examples = await response.json();
+                const example = examples[type];
+                if (example) {
+                    document.getElementById('taskInput').value = JSON.stringify(example, null, 2);
+                }
+            } catch (error) {
+                showValidation('Error loading examples: ' + error.message, 'error');
+            }
+        }
+
+        // Generate Gantt diagram
+        async function generateGantt() {
+            try {
+                const input = document.getElementById('taskInput').value;
+                const data = JSON.parse(input);
+
+                showLoading(true);
+
+                const response = await fetch('/api/gantt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    currentHTML = result.html;
+                    showPreview(result.html);
+                    showHTMLCode(result.html);
+                    showValidation(`✅ Generated successfully! ${result.taskCount} tasks`, 'success');
+                    
+                    if (result.warnings && result.warnings.length > 0) {
+                        const warnings = result.warnings.map(w => `• ${w.message}`).join('\n');
+                        showValidation(`⚠️ Warnings:\n${warnings}`, 'warning');
+                    }
+                } else {
+                    showValidation(`❌ Error: ${result.error}`, 'error');
+                    if (result.errors && result.errors.length > 0) {
+                        const errors = result.errors.map(e => `• [${e.taskId}] ${e.message}`).join('\n');
+                        showValidation(errors, 'error');
+                    }
+                }
+            } catch (error) {
+                showValidation('❌ ' + error.message, 'error');
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Validate only
+        async function validateOnly() {
+            try {
+                const input = document.getElementById('taskInput').value;
+                const { tasks } = JSON.parse(input);
+
+                const response = await fetch('/api/validate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tasks }),
+                });
+
+                const result = await response.json();
+
+                if (result.valid) {
+                    showValidation(`✅ All ${tasks.length} tasks are valid!`, 'success');
+                } else {
+                    const errors = result.errors.map(e => `• [${e.taskId}] ${e.field}: ${e.message}`).join('\n');
+                    showValidation(`❌ Validation failed:\n${errors}`, 'error');
+                }
+
+                if (result.warnings && result.warnings.length > 0) {
+                    const warnings = result.warnings.map(w => `• ${w.message}`).join('\n');
+                    showValidation(`⚠️ Warnings:\n${warnings}`, 'warning');
+                }
+            } catch (error) {
+                showValidation('❌ ' + error.message, 'error');
+            }
+        }
+
+        // Show preview
+        function showPreview(html) {
+            const container = document.getElementById('previewContent');
+            const iframe = document.createElement('iframe');
+            iframe.style.width = '100%';
+            iframe.style.height = '600px';
+            iframe.style.border = 'none';
+            
+            container.innerHTML = '';
+            container.appendChild(iframe);
+            
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+        }
+
+        // Show HTML code
+        function showHTMLCode(html) {
+            const encoded = html.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            document.getElementById('htmlCode').innerHTML = '<code>' + encoded + '</code>';
+        }
+
+        // Show validation result
+        function showValidation(message, type) {
+            const container = document.getElementById('validationStatus');
+            container.innerHTML = `<div class="validation-result ${type}"><strong>${type === 'error' ? '❌' : type === 'warning' ? '⚠️' : '✅'}</strong> ${message.replace(/\n/g, '<br>')}</div>`;
+        }
+
+        // Switch tabs
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        // Copy functions
+        function copyInput() {
+            const input = document.getElementById('taskInput');
+            input.select();
+            document.execCommand('copy');
+            alert('✅ Copied to clipboard!');
+        }
+
+        function copyHTML() {
+            const html = document.getElementById('htmlCode').innerText;
+            navigator.clipboard.writeText(html).then(() => {
+                alert('✅ HTML copied to clipboard!');
+            });
+        }
+
+        // Download HTML
+        function downloadHTML() {
+            if (!currentHTML) {
+                alert('⚠️ Generate a diagram first!');
+                return;
+            }
+            const blob = new Blob([currentHTML], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `gantt-${new Date().getTime()}.html`;
+            link.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Show loading
+        function showLoading(show) {
+            document.getElementById('loadingSpinner').style.display = show ? 'block' : 'none';
+        }
+
+        // Show API docs
+        function showAPI(event) {
+            event.preventDefault();
+            alert(`API Endpoints:
+
+POST /api/gantt
+Generate Gantt diagram
+
+Body:
+{
+  "tasks": [...],
+  "options": {...}
+}
+
+POST /api/validate
+Validate tasks
+
+Body:
+{ "tasks": [...] }
+
+GET /api/examples
+Get example data
+
+GET /health
+Health check`);
+        }
+
+        // Load simple example on startup
+        window.addEventListener('load', () => {
+            loadExample('simple');
+        });
+    </script>
+</body>
+</html>
