@@ -1,4 +1,4 @@
-import { GanttTask, ValidationError } from '../types';
+import { GanttTask, ValidationError } from '../types.js';
 
 /**
  * Detects circular dependencies in task graph using DFS algorithm

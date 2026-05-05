@@ -1,4 +1,4 @@
-import { GanttTask, GanttOptions } from '../types';
+import { GanttTask, GanttOptions } from '../types.js';
 
 /**
  * Generates self-contained HTML with Frappe Gantt chart

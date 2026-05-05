@@ -1,5 +1,5 @@
-import { GanttTask, ValidationResult, ValidationError, ResourceCapacity } from '../types';
-import { DependencyChecker } from './dependency-checker';
+import { GanttTask, ValidationResult, ValidationError, ResourceCapacity } from '../types.js';
+import { DependencyChecker } from './dependency-checker.js';
 
 /**
  * Comprehensive validator for Gantt tasks
