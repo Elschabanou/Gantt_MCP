@@ -10,6 +10,7 @@ import { createMCPServer } from '../mcp-server.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
+const MCP_PROTOCOL_VERSION = '2025-06-18';
 
 // Middleware
 app.use(express.json());
@@ -55,21 +56,12 @@ app.head('/mcp', (req: Request, res: Response) => {
   res.sendStatus(200);
 });
 
-// GET /mcp - Return tools/list for initial discovery
+// GET /mcp - Streamable HTTP uses GET only for SSE streams.
+// This server does not expose an SSE stream, so return 405.
 app.get('/mcp', (req: Request, res: Response) => {
-  console.log('[MCP] GET /mcp request (discovery)');
-  res.json({
-    jsonrpc: '2.0',
-    id: null,
-    result: {
-      tools: [
-        {
-          name: 'create_gantt_diagram',
-          description: 'Creates a Gantt diagram from task definitions.',
-        },
-      ],
-    },
-  });
+  console.log('[MCP] GET /mcp request (not supported)');
+  res.setHeader('Allow', 'POST, OPTIONS');
+  return res.sendStatus(405);
 });
 
 app.post('/mcp', async (req: Request, res: Response) => {
@@ -120,25 +112,16 @@ app.post('/mcp', async (req: Request, res: Response) => {
     // Handle notifications (no id, no response expected)
     if (method.startsWith('notifications/')) {
       console.log(`[MCP] Notification received: ${method}`);
-      // Some clients (eg. Perplexity) perform strict JSON-RPC validation
-      // on HTTP responses. Returning a bare `{}` causes validation errors
-      // (missing required JSON-RPC fields). Return a minimal valid
-      // JSON-RPC response object to satisfy validators.
-      // Some validators require `id` to be a string or integer.
-      // Use `0` to represent a generic acknowledgement that will
-      // satisfy strict JSON-RPC validators (Pydantic expects int/str).
-      return res.status(200).json({
-        jsonrpc: '2.0',
-        id: 0,
-        result: {},
-      });
+      // MCP Streamable HTTP notifications must return 202 Accepted with
+      // no response body.
+      return res.status(202).end();
     }
 
     // Handle initialize request (MCP Protocol Handshake)
     if (method === 'initialize') {
       console.log('[MCP] Initialize request - performing handshake');
       result = {
-        protocolVersion: '2024-11-05',
+        protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: {
           tools: {},
         },
