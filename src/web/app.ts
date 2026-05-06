@@ -104,7 +104,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
       console.warn('[MCP] Missing method in request. Body:', req.body);
       return res.status(400).json({
         jsonrpc: '2.0',
-        id: id || null,
+        id,
         error: { 
           code: -32600, 
           message: 'Invalid Request: Missing method',
@@ -220,7 +220,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
       if (name !== 'create_gantt_diagram') {
         return res.status(400).json({
           jsonrpc: '2.0',
-          id: id || null,
+          id,
           error: { code: -32600, message: `Unknown tool: ${name}` },
         });
       }
@@ -298,7 +298,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
     } else {
       return res.status(400).json({
         jsonrpc: '2.0',
-        id: id || null,
+        id,
         error: { code: -32601, message: `Method not found: ${method}` },
       });
     }
@@ -306,7 +306,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
     // Send JSON-RPC response
     res.json({
       jsonrpc: '2.0',
-      id: id || null,
+      id,
       result: result,
     });
   } catch (error) {
@@ -315,7 +315,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
 
     res.status(500).json({
       jsonrpc: '2.0',
-      id: (req.body && req.body.id) || null,
+      id: (req.body && req.body.id) !== undefined ? (req.body && req.body.id) : null,
       error: {
         code: -32603,
         message: 'Internal error',
