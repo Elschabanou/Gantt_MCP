@@ -117,6 +117,12 @@ app.post('/mcp', async (req: Request, res: Response) => {
 
     let result: any;
 
+    // Handle notifications (no id, no response expected)
+    if (method.startsWith('notifications/')) {
+      console.log(`[MCP] Notification received: ${method}`);
+      return res.sendStatus(200);
+    }
+
     // Handle initialize request (MCP Protocol Handshake)
     if (method === 'initialize') {
       console.log('[MCP] Initialize request - performing handshake');
@@ -275,7 +281,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
                 text: responseText,
               },
               {
-                type: 'text',
+                type: 'html',
                 text: html,
               },
             ],
