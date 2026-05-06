@@ -22,17 +22,50 @@ app.use(express.static(path.join(__dirname, '../../public')));
  * This is the main endpoint for Model Context Protocol requests
  * Copilot connects here to call the Gantt generation tool
  */
+
+// Handle OPTIONS/HEAD requests (for Perplexity and other clients)
+app.options('/mcp', (req: Request, res: Response) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'POST, GET, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.sendStatus(200);
+});
+
+app.head('/mcp', (req: Request, res: Response) => {
+  res.sendStatus(200);
+});
+
 app.post('/mcp', async (req: Request, res: Response) => {
   try {
+    // Log incoming request for debugging
+    console.log('[MCP] Request received:', {
+      contentType: req.headers['content-type'],
+      bodyKeys: Object.keys(req.body || {}),
+      bodySize: JSON.stringify(req.body).length,
+    });
+
+    // Handle empty body
+    if (!req.body || Object.keys(req.body).length === 0) {
+      console.warn('[MCP] Empty request body');
+      return res.status(400).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32700, message: 'Parse error: Empty body' },
+      });
+    }
+
     const { method, params, id, jsonrpc } = req.body;
 
     if (!method) {
+      console.warn('[MCP] Missing method in request', { body: req.body });
       return res.status(400).json({
         jsonrpc: '2.0',
         id: id || null,
         error: { code: -32600, message: 'Invalid Request: Missing method' },
       });
     }
+
+    console.log(`[MCP] Method: ${method}, ID: ${id}`);
 
     let result: any;
 
@@ -215,12 +248,12 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
       result: result,
     });
   } catch (error) {
-    console.error('MCP request error:', error);
+    console.error('[MCP] Request error:', error);
     const message = error instanceof Error ? error.message : 'Unknown error';
 
     res.status(500).json({
       jsonrpc: '2.0',
-      id: req.body.id || null,
+      id: (req.body && req.body.id) || null,
       error: {
         code: -32603,
         message: 'Internal error',
@@ -230,9 +263,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
   }
 });
 
-/**
- * Health check endpoint
- */
+// Health check endpoint (for monitoring)
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', message: 'MCP Gantt Server is running', timestamp: new Date().toISOString() });
 });
