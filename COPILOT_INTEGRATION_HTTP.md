@@ -9,6 +9,7 @@ Diese Anleitung beschreibt die Integration mit Microsoft Copilot über HTTP für
 Der MCP Gantt Server ist für cloud-Deployment vorbereitet:
 
 **Render.com (empfohlen):**
+
 ```bash
 # 1. Repository zu GitHub pushen
 git push origin main
@@ -25,11 +26,13 @@ git push origin main
 ```
 
 **Heroku:**
+
 ```bash
 git push heroku main
 ```
 
 **AWS/andere:**
+
 ```bash
 docker build -t mcp-gantt:latest .
 docker run -p 3000:3000 mcp-gantt:latest
@@ -38,6 +41,7 @@ docker run -p 3000:3000 mcp-gantt:latest
 ### 2. Endpoint-URL ermitteln
 
 Nach Deployment notieren Sie die öffentliche URL:
+
 - Render: `https://mcp-gantt-xxxx.onrender.com`
 - Heroku: `https://mcp-gantt-xxxx.herokuapp.com`
 - AWS: `https://your-api-gateway.amazonaws.com`
@@ -45,6 +49,7 @@ Nach Deployment notieren Sie die öffentliche URL:
 ### 3. Copilot konfigurieren (HTTP)
 
 #### **Windows:**
+
 ```
 Pfad: %APPDATA%\Code\User\globalStorage\GitHub.copilot-chat\cmp\settings.json
 ```
@@ -63,6 +68,7 @@ Alternativ: Neumeldung oder neu anlegen
 ```
 
 #### **Für produktiv-gehostete URL:**
+
 ```json
 {
   "mcpServers": {
@@ -75,6 +81,7 @@ Alternativ: Neumeldung oder neu anlegen
 ```
 
 #### **macOS/Linux:**
+
 ```
 ~/.config/Code/User/globalStorage/GitHub.copilot-chat/cmp/settings.json
 ```
@@ -87,6 +94,7 @@ Alternativ: Neumeldung oder neu anlegen
 ### 5. Testen
 
 Schreiben Sie einen Prompt:
+
 ```
 Create a Gantt diagram with these tasks:
 - Task 1: Planning from 2024-01-01 to 2024-01-05
@@ -101,6 +109,7 @@ Create a Gantt diagram with these tasks:
 Akzeptiert JSON-RPC 2.0 Requests:
 
 **tools/list Request:**
+
 ```bash
 curl -X POST https://your-server.com/mcp \
   -H "Content-Type: application/json" \
@@ -112,6 +121,7 @@ curl -X POST https://your-server.com/mcp \
 ```
 
 **tools/list Response:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -129,6 +139,7 @@ curl -X POST https://your-server.com/mcp \
 ```
 
 **tools/call Request:**
+
 ```bash
 curl -X POST https://your-server.com/mcp \
   -H "Content-Type: application/json" \
@@ -153,6 +164,7 @@ curl -X POST https://your-server.com/mcp \
 ```
 
 **tools/call Response:**
+
 ```json
 {
   "jsonrpc": "2.0",
@@ -166,7 +178,7 @@ curl -X POST https://your-server.com/mcp \
       },
       {
         "type": "text",
-        "image": { "mimeType": "image/png", "data": "<base64-encoded PNG>" }
+        "image": {"mimeType": "image/png", "data": "<base64-encoded PNG>"}
       }
     ]
   }
@@ -176,6 +188,7 @@ curl -X POST https://your-server.com/mcp \
 ### GET /health
 
 Health-Check für Monitoring:
+
 ```bash
 curl https://your-server.com/health
 # { "status": "ok", "message": "MCP Gantt Server is running", "timestamp": "..." }
@@ -197,6 +210,7 @@ Auch während der Entwicklung können Sie HTTP statt stdio nutzen:
 ```
 
 Starten Sie den Dev-Server:
+
 ```bash
 npm run dev
 # 🚀 Server running at http://localhost:3000
@@ -205,21 +219,27 @@ npm run dev
 ## 🔐 Sicherheit für Production
 
 ### HTTPS erzwingen
+
 Alle cloud-Provider unterstützen automatisch HTTPS (Render, Heroku, AWS).
 
 ### Authentifizierung (optional)
+
 Für private Server können Sie Basic Auth hinzufügen:
 
 ```typescript
 // In src/web/app.ts
-const basicAuth = require('express-basic-auth');
-app.use('/mcp', basicAuth({
-  users: { 'user': process.env.MCP_PASSWORD },
-  challenge: true
-}));
+const basicAuth = require("express-basic-auth");
+app.use(
+  "/mcp",
+  basicAuth({
+    users: {user: process.env.MCP_PASSWORD},
+    challenge: true,
+  }),
+);
 ```
 
 Dann in Copilot settings:
+
 ```json
 {
   "url": "https://user:password@your-server.com/mcp"
@@ -227,12 +247,13 @@ Dann in Copilot settings:
 ```
 
 ### CORS Headers (falls benötigt)
+
 ```typescript
 app.use(express.json());
 app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'POST, GET');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "POST, GET");
+  res.header("Access-Control-Allow-Headers", "Content-Type");
   next();
 });
 ```
@@ -240,6 +261,7 @@ app.use((req, res, next) => {
 ## ⚠️ Debugging
 
 ### MCP Inspector
+
 ```bash
 # Vom VS Code Extensions Marketplace installieren:
 # "MCP Inspector" von Ianwazir
@@ -248,6 +270,7 @@ app.use((req, res, next) => {
 Damit können Sie JSON-RPC Requests und Responses live debuggen.
 
 ### Logs überprüfen
+
 ```bash
 # Render
 render logs --tail 100
@@ -261,12 +284,12 @@ docker logs -f container-id
 
 ### Typische Fehler
 
-| Fehler | Lösung |
-|--------|--------|
-| "Connection refused" | Server läuft nicht / falsche URL |
-| "Invalid JSON" | Fehler im JSON-RPC Format |
-| "Tool not found" | Tool-Name falsch geschrieben |
-| "Validation failed" | Task-Daten ungültig (Daten prüfen) |
+| Fehler               | Lösung                             |
+| -------------------- | ---------------------------------- |
+| "Connection refused" | Server läuft nicht / falsche URL   |
+| "Invalid JSON"       | Fehler im JSON-RPC Format          |
+| "Tool not found"     | Tool-Name falsch geschrieben       |
+| "Validation failed"  | Task-Daten ungültig (Daten prüfen) |
 
 ## 📝 Beispiel-Prompts für Copilot
 
@@ -284,6 +307,7 @@ Verwende die create_gantt_diagram Tool.
 ## 🚀 Nächste Schritte
 
 1. **Docker Image erstellen** (für schnelleres Cloud-Deployment)
+
    ```bash
    docker build -t mcp-gantt:latest .
    docker run -p 3000:3000 mcp-gantt:latest

@@ -50,6 +50,7 @@ npm start
 ```
 
 **Unterstützte Deployment-Plattformen:**
+
 - ✅ **Render.com** (empfohlen, kostenlos)
 - ✅ **Heroku**
 - ✅ **AWS Lambda / API Gateway**
@@ -62,6 +63,7 @@ Siehe [COPILOT_INTEGRATION_HTTP.md](COPILOT_INTEGRATION_HTTP.md) für detaillier
 Konfigurieren Sie den MCP Server in Copilot:
 
 **Für lokale Entwicklung:**
+
 ```json
 {
   "mcpServers": {
@@ -74,6 +76,7 @@ Konfigurieren Sie den MCP Server in Copilot:
 ```
 
 **Für Cloud-Deployment:**
+
 ```json
 {
   "mcpServers": {
@@ -86,7 +89,8 @@ Konfigurieren Sie den MCP Server in Copilot:
 ```
 
 Dann können Sie in Copilot Gantt-Diagramme direkt erstellen!
-```
+
+````
 
 ## 📋 Task-Format
 
@@ -110,15 +114,17 @@ Alle Tasks müssen diesem Format entsprechen:
     "view_mode": "Month"
   }
 }
-```
+````
 
 ### Erforderliche Felder
+
 - `id` (string) - Eindeutige Kennung
 - `name` (string) - Task-Name
 - `start` (YYYY-MM-DD) - Startdatum
 - `end` (YYYY-MM-DD) - Enddatum
 
 ### Optionale Felder
+
 - `progress` (0-100) - Fortschritt %
 - `dependencies` (string) - Komma-getrennte Task-IDs (z.B. "1,2")
 - `priority` (high|medium|low) - Priorität
@@ -126,6 +132,7 @@ Alle Tasks müssen diesem Format entsprechen:
 - `custom_class` (string) - CSS-Klasse
 
 ### Gantt-Optionen
+
 - `view_mode` (Day|Week|Month|Year) - Timeline-Ansicht (default: Month)
 - `bar_height` (number) - Höhe Task-Bar in px (default: 30)
 - `column_width` (number) - Breite Timeline-Spalte (default: 45)
@@ -136,6 +143,7 @@ Alle Tasks müssen diesem Format entsprechen:
 ## 🔗 API Endpoints (Web-UI)
 
 ### POST /api/gantt
+
 **Generiert ein Gantt-Diagramm aus Tasks**
 
 ```bash
@@ -149,6 +157,7 @@ curl -X POST http://localhost:3000/api/gantt \
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -159,6 +168,7 @@ curl -X POST http://localhost:3000/api/gantt \
 ```
 
 ### POST /api/validate
+
 **Validiert Tasks ohne Gantt zu generieren**
 
 ```bash
@@ -168,6 +178,7 @@ curl -X POST http://localhost:3000/api/validate \
 ```
 
 ### GET /api/examples
+
 **Gibt Beispiel-Daten zurück** (simple, advanced, withDependencies)
 
 ```bash
@@ -175,6 +186,7 @@ curl http://localhost:3000/api/examples
 ```
 
 ### GET /health
+
 **Gesundheitsprüfung**
 
 ```bash
@@ -190,6 +202,7 @@ Siehe [COPILOT_INTEGRATION_HTTP.md](COPILOT_INTEGRATION_HTTP.md) für ausführli
 Der Server führt automatisch folgende Checks durch:
 
 ### ✅ Basis-Checks
+
 - ✓ Erforderliche Felder vorhanden
 - ✓ Datumformat YYYY-MM-DD
 - ✓ start ≤ end
@@ -197,15 +210,18 @@ Der Server führt automatisch folgende Checks durch:
 - ✓ Keine doppelten Task-IDs
 
 ### ✅ Abhängigkeiten
+
 - ✓ **Zirkeldependencies erkannt** (DFS)
 - ✓ Alle referenzierten Tasks existieren
 - ✓ Topologische Sortierbarkeit
 
 ### ✅ Ressourcen & Kapazität
+
 - ✓ Ressourcen-Überlagerungen
 - ✓ Kapazitätsgrenzen
 
 ### ✅ Scheduling
+
 - ✓ Tasks mit 100% Progress in Zukunft
 - ✓ Unvollständige Tasks mit alten End-Dates
 
@@ -236,16 +252,19 @@ MCP_Gantt/
 ## 🛠️ Entwicklung
 
 ### Build
+
 ```bash
 npm run build
 ```
 
 ### Development (Web-UI mit Hot-Reload)
+
 ```bash
 npm run dev
 ```
 
 ### Production Server
+
 ```bash
 npm start
 ```
@@ -257,10 +276,37 @@ npm start
 ```json
 {
   "tasks": [
-    {"id": "1", "name": "Planung", "start": "2024-01-01", "end": "2024-01-05", "progress": 100},
-    {"id": "2", "name": "Design", "start": "2024-01-05", "end": "2024-01-15", "progress": 80, "dependencies": "1"},
-    {"id": "3", "name": "Entwicklung", "start": "2024-01-15", "end": "2024-02-01", "progress": 30, "dependencies": "2"},
-    {"id": "4", "name": "Test", "start": "2024-02-01", "end": "2024-02-10", "progress": 0, "dependencies": "3"}
+    {
+      "id": "1",
+      "name": "Planung",
+      "start": "2024-01-01",
+      "end": "2024-01-05",
+      "progress": 100
+    },
+    {
+      "id": "2",
+      "name": "Design",
+      "start": "2024-01-05",
+      "end": "2024-01-15",
+      "progress": 80,
+      "dependencies": "1"
+    },
+    {
+      "id": "3",
+      "name": "Entwicklung",
+      "start": "2024-01-15",
+      "end": "2024-02-01",
+      "progress": 30,
+      "dependencies": "2"
+    },
+    {
+      "id": "4",
+      "name": "Test",
+      "start": "2024-02-01",
+      "end": "2024-02-10",
+      "progress": 0,
+      "dependencies": "3"
+    }
   ]
 }
 ```
@@ -350,7 +396,9 @@ npm start
 ## ⚠️ Häufige Fehler
 
 ### "Circular dependency detected"
+
 **Ursache:** Task hängt direkt oder indirekt von sich selbst ab.
+
 ```json
 // ❌ Falsch
 {"id": "1", "dependencies": "1"}  // Task hängt von sich selbst ab
@@ -364,6 +412,7 @@ npm start
 ```
 
 ### "Start date must be before or equal to end date"
+
 ```json
 // ❌ Falsch
 {"id": "1", "start": "2024-12-31", "end": "2024-01-01"}
@@ -373,6 +422,7 @@ npm start
 ```
 
 ### "Progress must be between 0 and 100"
+
 ```json
 // ❌ Falsch
 {"id": "1", "progress": 150}
@@ -401,17 +451,21 @@ npm start
 ### Eigenes Tool hinzufügen
 
 1. Definiere das Tool in `src/tools/`:
+
 ```typescript
 export function myCustomTool(): Tool {
   return {
-    name: 'my_tool',
-    description: 'Mein eigenes Tool',
-    inputSchema: { /* ... */ }
+    name: "my_tool",
+    description: "Mein eigenes Tool",
+    inputSchema: {
+      /* ... */
+    },
   };
 }
 ```
 
 2. Registriere es in `src/index.ts`:
+
 ```typescript
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -423,7 +477,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 ### HTTP-Transport statt stdio
 
 ```typescript
-import { WebSocketServerTransport } from '@modelcontextprotocol/sdk/server/http.js';
+import {WebSocketServerTransport} from "@modelcontextprotocol/sdk/server/http.js";
 
 const transport = new WebSocketServerTransport({
   port: 3001,
@@ -437,21 +491,25 @@ ISC
 ## 🙋 Troubleshooting
 
 ### "Module not found" Fehler
+
 ```bash
 npm install
 npm run build
 ```
 
 ### Port 3000 belegt
+
 ```bash
 PORT=3001 npm run dev
 ```
 
 ### MCP Server verbindet sich nicht
+
 - Stelle sicher, dass der Pfad in `settings.json` korrekt ist
 - Probiere den MCP Inspector: `npx @modelcontextprotocol/inspector node dist/index.js`
 
 ### Gantt-Diagramm zeigt sich nicht
+
 - Überprüfe Browser-Konsole auf JavaScript-Fehler
 - Stelle sicher, dass JavaScript aktiviert ist
 - Probiere einen anderen Browser
