@@ -10,7 +10,7 @@ Ein vollständiger **Model Context Protocol (MCP) Server** zur Generierung inter
   - **Zirkeldependency-Erkennung** (DFS-Algorithmus)
   - Ressourcen-Kapazitätsprüfung
   - Scheduling-Konflikte
-- ✅ **HTML-Output** - Self-contained Gantt-Charts für Chat-Integration
+- ✅ **PNG-Output** - Self-contained Gantt-Charts für Chat-Integration
 - ✅ **Web-UI zum Testen** - Input-Formular + Live-Vorschau
 - ✅ **MCP Server** - Mit stdio-Transport (lokal) oder HTTP
 - ✅ **Frappe Gantt Integration** - Interactive Timeline mit Drag & Drop
@@ -153,7 +153,7 @@ curl -X POST http://localhost:3000/api/gantt \
 {
   "success": true,
   "taskCount": 1,
-  "html": "<!DOCTYPE html>...",
+  "image": "<base64-encoded PNG>"
   "warnings": null
 }
 ```

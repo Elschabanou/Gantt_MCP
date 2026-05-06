@@ -29,7 +29,7 @@ Validation includes:
 ✓ Progress range validation (0-100)
 ✓ Resource capacity checks
 
-Returns a static image preview of the Gantt chart ready to display.`,
+Returns a static PNG image preview of the Gantt chart ready to display.`,
     inputSchema: {
       type: 'object',
       properties: {

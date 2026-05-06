@@ -166,7 +166,7 @@ curl -X POST https://your-server.com/mcp \
       },
       {
         "type": "text",
-        "text": "<html>...</html>"
+        "image": { "mimeType": "image/png", "data": "<base64-encoded PNG>" }
       }
     ]
   }

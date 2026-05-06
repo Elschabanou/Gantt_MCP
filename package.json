@@ -19,11 +19,12 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@types/express": "^5.0.6",
     "@types/node": "^25.6.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^5.2.1",
     "frappe-gantt": "^1.2.2",
+    "sharp": "^0.34.5",
     "zod": "^4.4.3"
   }
 }
