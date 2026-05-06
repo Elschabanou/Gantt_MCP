@@ -120,11 +120,10 @@ app.post('/mcp', async (req: Request, res: Response) => {
     // Handle notifications (no id, no response expected)
     if (method.startsWith('notifications/')) {
       console.log(`[MCP] Notification received: ${method}`);
-      // Some clients (eg. Perplexity) expect a JSON content-type even for
-      // empty/notification responses. Ensure we return a 204 with a
-      // Content-Type header to avoid "Unexpected content type" errors.
-      res.setHeader('Content-Type', 'application/json');
-      return res.status(204).send(); // No Content
+      // Some clients (eg. Perplexity) expect a JSON content-type and a
+      // JSON response body even for notifications. Return a 200 with an
+      // empty JSON object to satisfy strict HTTP clients.
+      return res.status(200).json({});
     }
 
     // Handle initialize request (MCP Protocol Handshake)
