@@ -117,8 +117,22 @@ app.post('/mcp', async (req: Request, res: Response) => {
 
     let result: any;
 
+    // Handle initialize request (MCP Protocol Handshake)
+    if (method === 'initialize') {
+      console.log('[MCP] Initialize request - performing handshake');
+      result = {
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {},
+        },
+        serverInfo: {
+          name: 'mcp-gantt-server',
+          version: '1.0.0',
+        },
+      };
+    }
     // Handle tools/list request
-    if (method === 'tools/list') {
+    else if (method === 'tools/list') {
       result = {
         tools: [
           {
