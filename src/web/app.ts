@@ -17,6 +17,26 @@ app.use(express.static(path.join(__dirname, '../../public')));
 
 /**
  * ========================
+ * GLOBAL REQUEST LOGGER
+ * ========================
+ * Log ALL requests to /mcp for debugging Perplexity integration
+ */
+app.use((req: Request, res: Response, next) => {
+  if (req.path === '/mcp') {
+    console.log('\n========== NEW REQUEST TO /mcp ==========');
+    console.log('Timestamp:', new Date().toISOString());
+    console.log('Method:', req.method);
+    console.log('URL:', req.url);
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('Raw Body Type:', typeof req.body);
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('=========================================\n');
+  }
+  next();
+});
+
+/**
+ * ========================
  * MCP HTTP ENDPOINT
  * ========================
  * This is the main endpoint for Model Context Protocol requests
