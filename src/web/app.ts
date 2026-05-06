@@ -124,9 +124,12 @@ app.post('/mcp', async (req: Request, res: Response) => {
       // on HTTP responses. Returning a bare `{}` causes validation errors
       // (missing required JSON-RPC fields). Return a minimal valid
       // JSON-RPC response object to satisfy validators.
+      // Some validators require `id` to be a string or integer.
+      // Use `0` to represent a generic acknowledgement that will
+      // satisfy strict JSON-RPC validators (Pydantic expects int/str).
       return res.status(200).json({
         jsonrpc: '2.0',
-        id: null,
+        id: 0,
         result: {},
       });
     }
