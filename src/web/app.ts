@@ -126,7 +126,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
     // Handle notifications (no id, no response expected)
     if (method.startsWith('notifications/')) {
       console.log(`[MCP] Notification received: ${method}`);
-      return res.status(200).json({ jsonrpc: '2.0', result: {} });
+      return res.sendStatus(204); // No Content
     }
 
     // Handle initialize request (MCP Protocol Handshake)
