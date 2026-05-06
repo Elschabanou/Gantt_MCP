@@ -35,33 +35,61 @@ app.head('/mcp', (req: Request, res: Response) => {
   res.sendStatus(200);
 });
 
+// GET /mcp - Return tools/list for initial discovery
+app.get('/mcp', (req: Request, res: Response) => {
+  console.log('[MCP] GET /mcp request (discovery)');
+  res.json({
+    jsonrpc: '2.0',
+    id: null,
+    result: {
+      tools: [
+        {
+          name: 'create_gantt_diagram',
+          description: 'Creates a Gantt diagram from task definitions.',
+        },
+      ],
+    },
+  });
+});
+
 app.post('/mcp', async (req: Request, res: Response) => {
   try {
     // Log incoming request for debugging
-    console.log('[MCP] Request received:', {
-      contentType: req.headers['content-type'],
-      bodyKeys: Object.keys(req.body || {}),
-      bodySize: JSON.stringify(req.body).length,
+    console.log('[MCP] POST /mcp request received');
+    console.log('[MCP] Headers:', {
+      'content-type': req.headers['content-type'],
+      'user-agent': req.headers['user-agent'],
+      'content-length': req.headers['content-length'],
     });
+    console.log('[MCP] Body keys:', Object.keys(req.body || {}).join(', '));
+    console.log('[MCP] Full body:', JSON.stringify(req.body, null, 2));
 
     // Handle empty body
     if (!req.body || Object.keys(req.body).length === 0) {
-      console.warn('[MCP] Empty request body');
+      console.warn('[MCP] Empty or missing request body. Headers:', req.headers);
       return res.status(400).json({
         jsonrpc: '2.0',
         id: null,
-        error: { code: -32700, message: 'Parse error: Empty body' },
+        error: { 
+          code: -32700, 
+          message: 'Parse error: Empty body',
+          details: 'Expected JSON-RPC 2.0 request with "method" field'
+        },
       });
     }
 
     const { method, params, id, jsonrpc } = req.body;
 
     if (!method) {
-      console.warn('[MCP] Missing method in request', { body: req.body });
+      console.warn('[MCP] Missing method in request. Body:', req.body);
       return res.status(400).json({
         jsonrpc: '2.0',
         id: id || null,
-        error: { code: -32600, message: 'Invalid Request: Missing method' },
+        error: { 
+          code: -32600, 
+          message: 'Invalid Request: Missing method',
+          received: Object.keys(req.body)
+        },
       });
     }
 
