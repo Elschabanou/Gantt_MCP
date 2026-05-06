@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { GanttValidator } from '../utils/task-validator.js';
 import { GanttHTMLGenerator } from '../utils/html-generator.js';
+import { GanttSVGGenerator } from '../utils/svg-generator.js';
 import { GanttTask, GanttOptions } from '../types.js';
 import { CreateGanttToolSchema } from '../tools/schemas.js';
 import { createMCPServer } from '../mcp-server.js';
@@ -160,7 +161,7 @@ Validation includes:
 ✓ Progress range validation (0-100)
 ✓ Resource capacity checks
 
-Returns HTML containing an interactive Gantt chart ready to display.`,
+Returns a static image preview of the Gantt chart ready to display.`,
             inputSchema: {
               type: 'object',
               properties: {
@@ -248,11 +249,16 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
             ],
           };
         } else {
-          // Generate HTML
+          // Generate visual assets
           const html = GanttHTMLGenerator.generate(
             validatedInput.tasks as GanttTask[],
             validatedInput.options
           );
+          const svg = GanttSVGGenerator.generate(
+            validatedInput.tasks as GanttTask[],
+            validatedInput.options
+          );
+          const svgBase64 = Buffer.from(svg, 'utf8').toString('base64');
 
           // Build response text
           let responseText = `✅ Gantt diagram generated successfully!\n\n`;
@@ -272,11 +278,12 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
             content: [
               {
                 type: 'text',
-                text: responseText,
+                text: `${responseText}\n🖼️  A visual diagram image is attached below.`,
               },
               {
-                type: 'text',
-                text: html,
+                type: 'image',
+                mimeType: 'image/svg+xml',
+                data: svgBase64,
               },
             ],
           };
