@@ -275,7 +275,7 @@ Returns HTML containing an interactive Gantt chart ready to display.`,
                 text: responseText,
               },
               {
-                type: 'html',
+                type: 'text',
                 text: html,
               },
             ],
