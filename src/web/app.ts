@@ -15,12 +15,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../../public')));
 
-// Set JSON content type for MCP endpoint
-app.use('/mcp', (req: Request, res: Response, next) => {
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  next();
-});
-
 /**
  * ========================
  * GLOBAL REQUEST LOGGER
