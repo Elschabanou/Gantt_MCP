@@ -120,10 +120,15 @@ app.post('/mcp', async (req: Request, res: Response) => {
     // Handle notifications (no id, no response expected)
     if (method.startsWith('notifications/')) {
       console.log(`[MCP] Notification received: ${method}`);
-      // Some clients (eg. Perplexity) expect a JSON content-type and a
-      // JSON response body even for notifications. Return a 200 with an
-      // empty JSON object to satisfy strict HTTP clients.
-      return res.status(200).json({});
+      // Some clients (eg. Perplexity) perform strict JSON-RPC validation
+      // on HTTP responses. Returning a bare `{}` causes validation errors
+      // (missing required JSON-RPC fields). Return a minimal valid
+      // JSON-RPC response object to satisfy validators.
+      return res.status(200).json({
+        jsonrpc: '2.0',
+        id: null,
+        result: {},
+      });
     }
 
     // Handle initialize request (MCP Protocol Handshake)
