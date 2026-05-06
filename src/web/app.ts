@@ -15,6 +15,12 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../../public')));
 
+// Set JSON content type for MCP endpoint
+app.use('/mcp', (req: Request, res: Response, next) => {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  next();
+});
+
 /**
  * ========================
  * GLOBAL REQUEST LOGGER
@@ -120,7 +126,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
     // Handle notifications (no id, no response expected)
     if (method.startsWith('notifications/')) {
       console.log(`[MCP] Notification received: ${method}`);
-      return res.sendStatus(200);
+      return res.status(200).json({ jsonrpc: '2.0', result: {} });
     }
 
     // Handle initialize request (MCP Protocol Handshake)
