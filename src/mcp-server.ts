@@ -7,6 +7,7 @@ import {
 import { createGanttDiagramTool } from './tools/generate-gantt.js';
 import { GanttValidator } from './utils/task-validator.js';
 import { GanttHTMLGenerator } from './utils/html-generator.js';
+import { GanttPNGGenerator } from './utils/png-generator.js';
 import { CreateGanttToolSchema } from './tools/schemas.js';
 import { GanttTask } from './types.js';
 
@@ -71,35 +72,37 @@ export function createMCPServer() {
         };
       }
 
-      // Generate HTML
-      const html = GanttHTMLGenerator.generate(
+      // Generate PNG image
+      const pngBuffer = await GanttPNGGenerator.generate(
         validatedInput.tasks as GanttTask[],
         validatedInput.options
       );
+      const pngBase64 = pngBuffer.toString('base64');
 
-      // Build response text
-      let responseText = `✅ Gantt diagram generated successfully!\n\n`;
-      responseText += `📊 Tasks: ${validatedInput.tasks.length}\n`;
+      // Build status text
+      let statusText = `✅ Gantt diagram generated successfully!\n\n`;
+      statusText += `📊 Tasks: ${validatedInput.tasks.length}\n`;
 
       if (validationResult.warnings.length > 0) {
-        responseText += `\n⚠️  Warnings:\n`;
+        statusText += `\n⚠️  Warnings:\n`;
         validationResult.warnings.forEach((w) => {
-          responseText += `  • ${w.message}\n`;
+          statusText += `  • ${w.message}\n`;
         });
       }
 
-      responseText += `\n📝 Interactive Gantt chart ready to display.`;
+      statusText += `\n📈 PNG image ready for display.`;
 
       return {
         isError: false,
         content: [
           {
             type: 'text' as const,
-            text: responseText,
+            text: statusText,
           },
           {
-            type: 'text' as const,
-            text: html,
+            type: 'image' as const,
+            mimeType: 'image/png',
+            data: pngBase64,
           },
         ],
       };
