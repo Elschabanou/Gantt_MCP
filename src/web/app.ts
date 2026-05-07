@@ -336,7 +336,7 @@ app.get('/health', (req: Request, res: Response) => {
 /**
  * API endpoint to create Gantt diagram
  */
-app.post('/api/gantt', (req: Request, res: Response) => {
+app.post('/api/gantt', async (req: Request, res: Response) => {
   try {
     const { tasks, options } = req.body;
 
@@ -370,8 +370,9 @@ app.post('/api/gantt', (req: Request, res: Response) => {
       });
     }
 
-    // Generate HTML
+    // Generate HTML and PNG preview
     const html = GanttHTMLGenerator.generate(tasks as GanttTask[], options as GanttOptions);
+    const pngBuffer = await GanttPNGGenerator.generate(tasks as GanttTask[], options as GanttOptions);
 
     // Return successful response
     res.json({
@@ -379,6 +380,7 @@ app.post('/api/gantt', (req: Request, res: Response) => {
       taskCount: tasks.length,
       warnings: validationResult.warnings.length > 0 ? validationResult.warnings : null,
       html: html,
+      png: pngBuffer.toString('base64'),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

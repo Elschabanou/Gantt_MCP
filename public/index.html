@@ -454,14 +454,24 @@
             <div class="panel-body">
                 <div class="tabs">
                     <button class="tab-button active" onclick="switchTab('preview')">Preview</button>
+                    <button class="tab-button" onclick="switchTab('png')">PNG</button>
                     <button class="tab-button" onclick="switchTab('html')">HTML Code</button>
                 </div>
 
                 <div id="preview" class="tab-content active">
                     <div id="previewContent" class="preview-container">
                         <div style="padding: 40px; text-align: center; color: var(--text-light);">
-                            👈 Click "Generate Gantt" to see preview here
+                            👈 Click "Generate Gantt" to see the PNG preview here
                         </div>
+                    </div>
+                </div>
+
+                <div id="png" class="tab-content">
+                    <div style="margin-bottom: 10px;">
+                        <button class="copy-button" onclick="downloadPNG()">📋 Download PNG</button>
+                    </div>
+                    <div id="pngCode" class="code-block">
+                        <code>PNG output will appear here...</code>
                     </div>
                 </div>
 
@@ -493,6 +503,7 @@
 
     <script>
         let currentHTML = '';
+        let currentPNG = '';
 
         // Load example data
         async function loadExample(type) {
@@ -526,7 +537,9 @@
 
                 if (result.success) {
                     currentHTML = result.html;
-                    showPreview(result.html);
+                    currentPNG = result.png || '';
+                    showPreview(result.png, result.html);
+                    showPNGCode(result.png);
                     showHTMLCode(result.html);
                     showValidation(`✅ Generated successfully! ${result.taskCount} tasks`, 'success');
                     
@@ -579,20 +592,42 @@
         }
 
         // Show preview
-        function showPreview(html) {
+        function showPreview(pngBase64, fallbackHtml) {
             const container = document.getElementById('previewContent');
+            container.innerHTML = '';
+
+            if (pngBase64) {
+                const img = document.createElement('img');
+                img.alt = 'Gantt chart PNG preview';
+                img.src = 'data:image/png;base64,' + pngBase64;
+                img.style.width = '100%';
+                img.style.height = 'auto';
+                img.style.display = 'block';
+                container.appendChild(img);
+                return;
+            }
+
             const iframe = document.createElement('iframe');
             iframe.style.width = '100%';
             iframe.style.height = '600px';
             iframe.style.border = 'none';
-            
-            container.innerHTML = '';
             container.appendChild(iframe);
-            
+
             const doc = iframe.contentDocument || iframe.contentWindow.document;
             doc.open();
-            doc.write(html);
+            doc.write(fallbackHtml || '<p>No preview available</p>');
             doc.close();
+        }
+
+        function showPNGCode(pngBase64) {
+            const content = document.getElementById('pngCode');
+            if (!pngBase64) {
+                content.innerHTML = '<code>PNG output will appear here...</code>';
+                return;
+            }
+
+            const preview = pngBase64.slice(0, 80) + (pngBase64.length > 80 ? '...' : '');
+            content.innerHTML = '<code>data:image/png;base64,' + preview + '</code>';
         }
 
         // Show HTML code
@@ -629,6 +664,18 @@
             navigator.clipboard.writeText(html).then(() => {
                 alert('✅ HTML copied to clipboard!');
             });
+        }
+
+        function downloadPNG() {
+            if (!currentPNG) {
+                alert('⚠️ Generate a diagram first!');
+                return;
+            }
+
+            const link = document.createElement('a');
+            link.href = 'data:image/png;base64,' + currentPNG;
+            link.download = `gantt-${new Date().getTime()}.png`;
+            link.click();
         }
 
         // Download HTML

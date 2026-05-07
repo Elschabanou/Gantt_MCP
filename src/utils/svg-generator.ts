@@ -11,12 +11,12 @@ export class GanttSVGGenerator {
 
     const bounds = this.getBounds(normalizedTasks);
     const chartWidth = 1200;
-    const leftPadding = 260;
+    const leftPadding = 240;
     const rightPadding = 40;
-    const topPadding = 80;
-    const rowHeight = 48;
-    const barHeight = options?.bar_height ?? 24;
-    const totalHeight = topPadding + normalizedTasks.length * rowHeight + 90;
+    const topPadding = 100;
+    const rowHeight = 52;
+    const barHeight = options?.bar_height ?? 20;
+    const totalHeight = topPadding + normalizedTasks.length * rowHeight + 60;
     const chartSpanDays = Math.max(1, this.diffDays(bounds.minDate, bounds.maxDate) + 1);
     const usableWidth = chartWidth - leftPadding - rightPadding;
 
@@ -25,41 +25,52 @@ export class GanttSVGGenerator {
     return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${chartWidth}" height="${totalHeight}" viewBox="0 0 ${chartWidth} ${totalHeight}">
   <defs>
-    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#f8fafc" />
-      <stop offset="100%" stop-color="#eef2ff" />
+    <linearGradient id="bar-default" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3b82f6" />
+      <stop offset="100%" stop-color="#2563eb" />
     </linearGradient>
-    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#4f46e5" />
-      <stop offset="100%" stop-color="#7c3aed" />
+    <linearGradient id="bar-high" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#f97316" />
+      <stop offset="100%" stop-color="#ea580c" />
     </linearGradient>
+    <linearGradient id="bar-medium" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#eab308" />
+      <stop offset="100%" stop-color="#ca8a04" />
+    </linearGradient>
+    <linearGradient id="bar-low" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#10b981" />
+      <stop offset="100%" stop-color="#059669" />
+    </linearGradient>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1" flood-color="#000000" />
+    </filter>
     <style>
-      .title { font: 700 28px Inter, Arial, sans-serif; fill: #0f172a; }
-      .subtitle { font: 400 14px Inter, Arial, sans-serif; fill: #475569; }
-      .label { font: 600 13px Inter, Arial, sans-serif; fill: #0f172a; }
-      .meta { font: 400 12px Inter, Arial, sans-serif; fill: #64748b; }
-      .axis { font: 600 11px Inter, Arial, sans-serif; fill: #475569; }
-      .grid { stroke: #cbd5e1; stroke-width: 1; }
-      .row { stroke: #e2e8f0; stroke-width: 1; }
-      .bar { fill: url(#bar); }
-      .progress { fill: rgba(255,255,255,0.35); }
-      .card { fill: white; stroke: #e2e8f0; stroke-width: 1; }
+      .background { fill: #ffffff; }
+      .title { font: 700 26px 'Segoe UI', -apple-system, sans-serif; fill: #1e293b; letter-spacing: -0.5px; }
+      .subtitle { font: 400 13px 'Segoe UI', -apple-system, sans-serif; fill: #64748b; }
+      .label { font: 500 13px 'Segoe UI', -apple-system, sans-serif; fill: #0f172a; }
+      .meta-text { font: 400 11px 'Segoe UI', -apple-system, sans-serif; fill: #94a3b8; }
+      .axis { font: 500 11px 'Segoe UI', -apple-system, sans-serif; fill: #64748b; }
+      .progress-text { font: 600 10px 'Segoe UI', -apple-system, sans-serif; fill: #ffffff; }
+      .divider { stroke: #e2e8f0; stroke-width: 0.5; }
+      .bar { filter: url(#shadow); }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="${chartWidth}" height="${totalHeight}" fill="url(#background)" />
-  <rect x="20" y="20" width="${chartWidth - 40}" height="${totalHeight - 40}" rx="20" class="card" />
+  <rect x="0" y="0" width="${chartWidth}" height="${totalHeight}" class="background" />
 
-  <text x="40" y="60" class="title">Gantt Diagram</text>
-  <text x="40" y="82" class="subtitle">Static image export for MCP / Perplexity</text>
+  <text x="32" y="52" class="title">Project Timeline</text>
+  <text x="32" y="70" class="subtitle">Task schedule and progress overview</text>
 
-  <line x1="${leftPadding}" y1="${topPadding - 12}" x2="${chartWidth - rightPadding}" y2="${topPadding - 12}" class="grid" />
+  <line x1="${leftPadding}" y1="${topPadding - 20}" x2="${chartWidth - rightPadding}" y2="${topPadding - 20}" class="divider" />
 
   ${monthLabels.map((label) => this.renderAxisLabel(label, leftPadding, usableWidth, bounds.minDate, chartSpanDays)).join('\n  ')}
 
+  <line x1="${leftPadding}" y1="${topPadding}" x2="${chartWidth - rightPadding}" y2="${topPadding}" class="divider" />
+
   ${normalizedTasks.map((task, index) => this.renderTaskRow(task, index, bounds.minDate, chartSpanDays, leftPadding, usableWidth, topPadding, rowHeight, barHeight)).join('\n  ')}
 
-  <text x="40" y="${totalHeight - 24}" class="meta">Generated ${new Date().toLocaleString()}</text>
+  <text x="32" y="${totalHeight - 16}" class="meta-text">Generated on ${new Date().toLocaleDateString()}</text>
 </svg>`;
   }
 
@@ -94,17 +105,17 @@ export class GanttSVGGenerator {
     const x = leftPadding + (startOffset / chartSpanDays) * usableWidth;
     const width = Math.max(4, (duration / chartSpanDays) * usableWidth);
     const y = topPadding + index * rowHeight + (rowHeight - barHeight) / 2;
-    const labelY = y + barHeight / 2 + 5;
+    const labelY = topPadding + index * rowHeight + 18;
     const progressWidth = Math.max(0, Math.min(width, (task.progressValue / 100) * width));
-    const priorityColor = this.getPriorityColor(task.priority);
+    const barGradient = this.getGradient(task.priority);
 
     return `
-    <line x1="${leftPadding}" y1="${topPadding + index * rowHeight + rowHeight - 6}" x2="${leftPadding + usableWidth}" y2="${topPadding + index * rowHeight + rowHeight - 6}" class="row" />
-    <text x="40" y="${labelY}" class="label">${this.escapeXml(task.name)}</text>
-    <text x="40" y="${labelY + 16}" class="meta">${this.escapeXml(task.id)} • ${this.escapeXml(task.start)} → ${this.escapeXml(task.end)}${task.priority ? ` • ${this.escapeXml(task.priority)}` : ''}</text>
-    <rect x="${x}" y="${y}" width="${width}" height="${barHeight}" rx="8" fill="${priorityColor}" />
-    <rect x="${x}" y="${y}" width="${progressWidth}" height="${barHeight}" rx="8" class="progress" />
-    <text x="${x + 10}" y="${labelY}" class="axis" fill="#ffffff">${Math.round(task.progressValue)}%</text>`;
+    <text x="32" y="${labelY}" class="label">${this.escapeXml(task.name)}</text>
+    <text x="32" y="${labelY + 14}" class="meta-text">${this.escapeXml(task.id)} • ${this.escapeXml(task.start)} to ${this.escapeXml(task.end)}</text>
+    <line x1="${leftPadding}" y1="${topPadding + (index + 1) * rowHeight - 2}" x2="${leftPadding + usableWidth}" y2="${topPadding + (index + 1) * rowHeight - 2}" class="divider" />
+    <rect x="${x}" y="${y}" width="${width}" height="${barHeight}" rx="6" fill="url(#${barGradient})" class="bar" />
+    ${progressWidth > 0 ? `<rect x="${x}" y="${y}" width="${progressWidth}" height="${barHeight}" rx="6" fill="rgba(255,255,255,0.3)" class="bar" />` : ''}
+    ${width > 45 ? `<text x="${x + 8}" y="${y + barHeight / 2 + 3}" class="progress-text">${Math.round(task.progressValue)}%</text>` : ''}`;
   }
 
   private static buildTimelineLabels(minDate: Date, maxDate: Date): Date[] {
@@ -138,16 +149,16 @@ export class GanttSVGGenerator {
     return Math.round((endUtc - startUtc) / msPerDay);
   }
 
-  private static getPriorityColor(priority?: string): string {
+  private static getGradient(priority?: string): string {
     switch (priority) {
       case 'high':
-        return '#ef4444';
+        return 'bar-high';
       case 'medium':
-        return '#f59e0b';
+        return 'bar-medium';
       case 'low':
-        return '#10b981';
+        return 'bar-low';
       default:
-        return '#4f46e5';
+        return 'bar-default';
     }
   }
 
