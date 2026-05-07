@@ -1,6 +1,7 @@
 import express, { Express, Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
 import { GanttValidator } from '../utils/task-validator.js';
 import { GanttHTMLGenerator } from '../utils/html-generator.js';
 import { GanttPNGGenerator } from '../utils/png-generator.js';
@@ -12,6 +13,23 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
 const MCP_PROTOCOL_VERSION = '2025-06-18';
+
+// ========================
+// IMAGE CACHE (In-Memory)
+// ========================
+// Store generated PNG images with unique IDs for public serving
+const imageCache = new Map<string, { buffer: Buffer; timestamp: number }>();
+
+// Clean up old images every 30 minutes (keep last 50 images)
+setInterval(() => {
+  if (imageCache.size > 50) {
+    const sorted = Array.from(imageCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp);
+    // Remove oldest 25 images
+    sorted.slice(0, 25).forEach(([key]) => imageCache.delete(key));
+    console.log(`[Image Cache] Cleaned up old images. Cache size: ${imageCache.size}`);
+  }
+}, 30 * 60 * 1000);
 
 // Middleware
 app.use(express.json());
@@ -254,7 +272,11 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
             validatedInput.tasks as GanttTask[],
             validatedInput.options
           );
-          const pngBase64 = pngBuffer.toString('base64');
+
+          // Store PNG in cache and generate public URL
+          const imageId = randomUUID();
+          imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
+          const imageUrl = `/gantt-image/${imageId}.png`;
 
           // Build response text
           let responseText = `✅ Gantt diagram generated successfully!\n\n`;
@@ -267,19 +289,15 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
             });
           }
 
-          responseText += `\n📝 Interactive Gantt chart ready to display.`;
+          responseText += `\n📈 Visual diagram:\n`;
+          responseText += `![Gantt Diagram](${imageUrl})`;
 
           result = {
             isError: false,
             content: [
               {
                 type: 'text',
-                text: `${responseText}\n🖼️  A visual diagram image is attached below.`,
-              },
-              {
-                type: 'image',
-                mimeType: 'image/png',
-                data: pngBase64,
+                text: responseText,
               },
             ],
           };
@@ -334,6 +352,28 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 /**
+ * ========================
+ * PUBLIC IMAGE ENDPOINT
+ * ========================
+ * Serve cached PNG images by ID
+ * This allows Perplexity and other clients to fetch and display Gantt diagrams
+ */
+app.get('/gantt-image/:id.png', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const cached = imageCache.get(id);
+
+  if (!cached) {
+    console.warn(`[Image] Not found: ${id}`);
+    return res.status(404).json({ error: 'Image not found' });
+  }
+
+  console.log(`[Image] Serving: ${id}`);
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(cached.buffer);
+});
+
+/**
  * API endpoint to create Gantt diagram
  */
 app.post('/api/gantt', async (req: Request, res: Response) => {
@@ -373,14 +413,21 @@ app.post('/api/gantt', async (req: Request, res: Response) => {
     // Generate HTML and PNG preview
     const html = GanttHTMLGenerator.generate(tasks as GanttTask[], options as GanttOptions);
     const pngBuffer = await GanttPNGGenerator.generate(tasks as GanttTask[], options as GanttOptions);
+    const pngBase64 = pngBuffer.toString('base64');
 
-    // Return successful response
+    // Store PNG in cache and generate public URL (for Perplexity)
+    const imageId = randomUUID();
+    imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
+    const imageUrl = `/gantt-image/${imageId}.png`;
+
+    // Return successful response with both formats
     res.json({
       success: true,
       taskCount: tasks.length,
       warnings: validationResult.warnings.length > 0 ? validationResult.warnings : null,
       html: html,
-      png: pngBuffer.toString('base64'),
+      png: pngBase64,  // For test UI (local preview)
+      pngUrl: imageUrl,  // For Perplexity and other clients
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
