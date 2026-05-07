@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
 const PORT = process.env.PORT || 3000;
 const MCP_PROTOCOL_VERSION = '2025-06-18';
+const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
 // ========================
 // IMAGE CACHE (In-Memory)
@@ -22,7 +23,7 @@ const imageCache = new Map<string, { buffer: Buffer; timestamp: number }>();
 
 // Clean up old images every 30 minutes (keep last 50 images)
 setInterval(() => {
-  if (imageCache.size > 50) {
+  if (imageCache.size > 10) {
     const sorted = Array.from(imageCache.entries())
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
     // Remove oldest 25 images
@@ -276,7 +277,7 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
           // Store PNG in cache and generate public URL
           const imageId = randomUUID();
           imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
-          const imageUrl = `/gantt-image/${imageId}.png`;
+          const imageUrl = `${SERVER_URL}/gantt-image/${imageId}.png`;
 
           // Build response text
           let responseText = `✅ Gantt diagram generated successfully!\n\n`;
@@ -418,7 +419,7 @@ app.post('/api/gantt', async (req: Request, res: Response) => {
     // Store PNG in cache and generate public URL (for Perplexity)
     const imageId = randomUUID();
     imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
-    const imageUrl = `/gantt-image/${imageId}.png`;
+    const imageUrl = `${SERVER_URL}/gantt-image/${imageId}.png`;
 
     // Return successful response with both formats
     res.json({
