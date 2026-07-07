@@ -1,6 +1,23 @@
+import { readFileSync } from 'node:fs';
 import { GanttTask, GanttOptions } from '../types.js';
 
 type SvgTask = GanttTask;
+
+// Background photo, embedded as a base64 data URI so the SVG is self-contained
+// for sharp/librsvg rasterization (external file hrefs are blocked). Loaded once
+// and cached; `null` means the file was unavailable and we fall back to the
+// plain dark gradient background.
+let bgImageDataUri: string | null | undefined;
+function getBackgroundDataUri(): string | null {
+  if (bgImageDataUri !== undefined) return bgImageDataUri;
+  try {
+    const url = new URL('../../public/S24_2837.jpg', import.meta.url);
+    bgImageDataUri = `data:image/jpeg;base64,${readFileSync(url).toString('base64')}`;
+  } catch {
+    bgImageDataUri = null;
+  }
+  return bgImageDataUri;
+}
 
 interface Row {
   task: SvgTask;
@@ -26,7 +43,8 @@ interface Segment {
 // Layout constants
 const WIDTH = 1200;
 const TEXT_LEFT = 36;
-const CHART_LEFT_LABELED = 236; // left gutter reserved for group labels
+const CHART_LEFT_LABELED = 188; // left gutter reserved for group labels
+const GROUP_LABEL_GAP = 22; // gap between right-aligned group label and the chart start
 const CHART_LEFT_BARE = 44; // no group labels -> bars start further left
 const CHART_RIGHT = WIDTH - 32;
 const TITLE_Y = 46;
@@ -38,11 +56,13 @@ const MS_ROW_H = 54;
 const GROUP_GAP = 22;
 const BOTTOM_PAD = 40;
 
-// Three-color palette: pink -> teal -> green (rotates per group)
+// Five-color palette: pink -> teal -> green -> amber -> violet (rotates per group)
 const PALETTE = [
   { solid: '#e5217d', bright: '#ec2d86' }, // rosa
-  { solid: '#17b3c7', bright: '#22c3d6' }, // türkis
+  { solid: '#25565A', bright: '#25565A' }, // türkis
   { solid: '#98c72f', bright: '#a9d13c' }, // grün
+  { solid: '#d9761f', bright: '#f0913a' }, // orange
+  { solid: '#6d4bd8', bright: '#8a6bf0' }, // violett
 ];
 
 export class GanttSVGGenerator {
@@ -108,8 +128,18 @@ export class GanttSVGGenerator {
       )
       .join('\n  ');
 
+    // Darkened photo background: full-bleed image + dark gradient overlay so the
+    // white labels/bars stay readable. Falls back to the plain gradient if the
+    // image can't be loaded.
+    const bgUri = getBackgroundDataUri();
+    const backgroundSvg = bgUri
+      ? `<image href="${bgUri}" xlink:href="${bgUri}" x="0" y="0" width="${WIDTH}" height="${totalHeight}" preserveAspectRatio="xMidYMid slice" />
+  <rect x="0" y="0" width="${WIDTH}" height="${totalHeight}" fill="url(#overlay)" />
+  <rect x="0" y="0" width="${CHART_LEFT_LABELED}" height="${totalHeight}" fill="url(#left-scrim)" />`
+      : `<rect x="0" y="0" width="${WIDTH}" height="${totalHeight}" fill="url(#bg)" />`;
+
     return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#202128" />
@@ -135,6 +165,25 @@ export class GanttSVGGenerator {
       <stop offset="58%" stop-color="#6f9422" />
       <stop offset="100%" stop-color="#a9d13c" />
     </linearGradient>
+    <linearGradient id="bar-3" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#3a1e05" />
+      <stop offset="58%" stop-color="#c06a12" />
+      <stop offset="100%" stop-color="#f0913a" />
+    </linearGradient>
+    <linearGradient id="bar-4" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1f1440" />
+      <stop offset="58%" stop-color="#5a3fb0" />
+      <stop offset="100%" stop-color="#8a6bf0" />
+    </linearGradient>
+    <linearGradient id="overlay" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#15161b" stop-opacity="0.84" />
+      <stop offset="55%" stop-color="#101116" stop-opacity="0.86" />
+      <stop offset="100%" stop-color="#0b0c10" stop-opacity="0.9" />
+    </linearGradient>
+    <linearGradient id="left-scrim" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0b0c10" stop-opacity="0.72" />
+      <stop offset="100%" stop-color="#0b0c10" stop-opacity="0" />
+    </linearGradient>
     <style>
       .title { font: 700 27px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; letter-spacing: -0.3px; }
       .timeline-label { font: 700 15px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #f2f6fa; }
@@ -144,12 +193,12 @@ export class GanttSVGGenerator {
       .bar-date { font: 400 11px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: rgba(255,255,255,0.92); }
       .ms-label { font: 700 12px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; }
       .ms-date { font: 400 11px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #aeb6bf; }
-      .gridline { stroke: rgba(255,255,255,0.07); stroke-width: 1; stroke-dasharray: 4 6; }
+      .gridline { stroke: rgba(255,255,255,0.30); stroke-width: 1.4; stroke-dasharray: 5 5; }
       .header-divider { stroke: rgba(255,255,255,0.22); stroke-width: 1; }
     </style>
   </defs>
 
-  <rect x="0" y="0" width="${WIDTH}" height="${totalHeight}" fill="url(#bg)" />
+  ${backgroundSvg}
 
   <text x="${TEXT_LEFT}" y="${TITLE_Y}" class="title">${this.escapeXml(title)}</text>
 
@@ -186,13 +235,16 @@ export class GanttSVGGenerator {
     const centerY = (block.startY + block.endY) / 2;
     const swimlane = `<rect x="${chartLeft - 16}" y="${this.fmt(block.startY + 4)}" width="6" height="${this.fmt(block.endY - block.startY - 8)}" rx="3" fill="${color.solid}" />`;
 
+    // Right-align labels so they hug the chart start (accent bar) regardless of
+    // length; the gap keeps them clear of the swimlane, so bars never overlap.
+    const labelX = chartLeft - GROUP_LABEL_GAP;
     const [name, subtitle] = this.splitLabel(block.label);
     let text = '';
     if (name && subtitle) {
-      text = `<text x="${TEXT_LEFT}" y="${this.fmt(centerY - 2)}" class="group-name">${this.escapeXml(name)}</text>
-  <text x="${TEXT_LEFT}" y="${this.fmt(centerY + 16)}" class="group-sub">${this.escapeXml(subtitle)}</text>`;
+      text = `<text x="${labelX}" y="${this.fmt(centerY - 2)}" text-anchor="end" class="group-name">${this.escapeXml(name)}</text>
+  <text x="${labelX}" y="${this.fmt(centerY + 16)}" text-anchor="end" class="group-sub">${this.escapeXml(subtitle)}</text>`;
     } else if (name) {
-      text = `<text x="${TEXT_LEFT}" y="${this.fmt(centerY + 5)}" class="group-name">${this.escapeXml(name)}</text>`;
+      text = `<text x="${labelX}" y="${this.fmt(centerY + 5)}" text-anchor="end" class="group-name">${this.escapeXml(name)}</text>`;
     }
     return `${swimlane}\n  ${text}`;
   }
