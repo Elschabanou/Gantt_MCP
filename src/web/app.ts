@@ -1,3 +1,5 @@
+import 'dotenv/config'; // must be first: loads .env into process.env before anything reads it
+import '../register-fonts.js'; // must be first: sets FONTCONFIG_FILE before sharp loads
 import express, { Express, Request, Response } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +9,7 @@ import { GanttHTMLGenerator } from '../utils/html-generator.js';
 import { GanttPNGGenerator } from '../utils/png-generator.js';
 import { GanttTask, GanttOptions } from '../types.js';
 import { CreateGanttToolSchema } from '../tools/schemas.js';
-import { createMCPServer } from '../mcp-server.js';
+import { requireApiKey } from '../middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app: Express = express();
@@ -16,12 +18,27 @@ const MCP_PROTOCOL_VERSION = '2025-06-18';
 const SERVER_URL = process.env.SERVER_URL || `http://localhost:${PORT}`;
 
 // ========================
+// FAIL-FAST: API-KEY MUSS GESETZT SEIN
+// ========================
+// Ohne MCP_API_KEY liefe der /mcp-Endpunkt ungeschützt. Wir brechen daher
+// beim Start ab, statt versehentlich offen zu deployen (fail closed).
+if (!process.env.MCP_API_KEY) {
+  console.error(
+    '❌ FATAL: Umgebungsvariable MCP_API_KEY ist nicht gesetzt.\n' +
+      '   Der /mcp-Endpunkt darf nicht ohne API-Key laufen.\n' +
+      '   Lege eine .env-Datei an (siehe .env.example) oder setze MCP_API_KEY im Environment.\n' +
+      '   Key erzeugen z.B. mit: openssl rand -hex 32'
+  );
+  process.exit(1);
+}
+
+// ========================
 // IMAGE CACHE (In-Memory)
 // ========================
 // Store generated PNG images with unique IDs for public serving
 const imageCache = new Map<string, { buffer: Buffer; timestamp: number }>();
 
-// Clean up old images every 30 minutes (keep last 50 images)
+// Clean up old images every 30 minutes once the cache exceeds 10 entries
 setInterval(() => {
   if (imageCache.size > 10) {
     const sorted = Array.from(imageCache.entries())
@@ -84,18 +101,8 @@ app.get('/mcp', (req: Request, res: Response) => {
   return res.sendStatus(405);
 });
 
-app.post('/mcp', async (req: Request, res: Response) => {
+app.post('/mcp', requireApiKey, async (req: Request, res: Response) => {
   try {
-    // Log incoming request for debugging
-    console.log('[MCP] POST /mcp request received');
-    console.log('[MCP] Headers:', {
-      'content-type': req.headers['content-type'],
-      'user-agent': req.headers['user-agent'],
-      'content-length': req.headers['content-length'],
-    });
-    console.log('[MCP] Body keys:', Object.keys(req.body || {}).join(', '));
-    console.log('[MCP] Full body:', JSON.stringify(req.body, null, 2));
-
     // Handle empty body
     if (!req.body || Object.keys(req.body).length === 0) {
       console.warn('[MCP] Empty or missing request body. Headers:', req.headers);
@@ -110,7 +117,7 @@ app.post('/mcp', async (req: Request, res: Response) => {
       });
     }
 
-    const { method, params, id, jsonrpc } = req.body;
+    const { method, params, id } = req.body;
 
     if (!method) {
       console.warn('[MCP] Missing method in request. Body:', req.body);
@@ -167,17 +174,20 @@ Each task must have:
 - id: Unique identifier (string)
 - name: Task name (string)
 - start: Start date in YYYY-MM-DD format
-- end: End date in YYYY-MM-DD format
-- progress: Progress percentage 0-100 (optional)
+- end: End date in YYYY-MM-DD format (for a milestone, use the same value as start)
+- group: Project/swimlane label (optional). Tasks sharing a group share a color; use "Name / Subtitle" for a two-line label. Groups are colored pink, then teal, then green in order of appearance.
+- milestone: true to render this item as a triangle marker (uses start as the date) instead of a bar (optional)
 - dependencies: Comma-separated task IDs this task depends on (optional)
 - priority: 'high', 'medium', or 'low' (optional)
 - custom_class: CSS class name (optional)
 - resource: Resource/person assignment (optional)
 
+Options may include:
+- title: Chart title shown at the top left (default: "Project Timeline")
+
 Validation includes:
 ✓ Circular dependency detection
 ✓ Date format and logic validation
-✓ Progress range validation (0-100)
 ✓ Resource capacity checks
 
 Returns a static PNG image preview of the Gantt chart ready to display.`,
@@ -194,6 +204,8 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
                       start: { type: 'string', description: 'Start date (YYYY-MM-DD format)' },
                       end: { type: 'string', description: 'End date (YYYY-MM-DD format)' },
                       progress: { type: 'number', description: 'Progress 0-100%', minimum: 0, maximum: 100 },
+                      group: { type: 'string', description: 'Project/swimlane label; tasks sharing a group share a color. Use "Name / Subtitle" for a two-line label.' },
+                      milestone: { type: 'boolean', description: 'Render as a triangle marker (uses start as the date) instead of a bar' },
                       dependencies: { type: 'string', description: 'Comma-separated dependent task IDs' },
                       priority: { type: 'string', enum: ['high', 'medium', 'low'] },
                       custom_class: { type: 'string', description: 'CSS class for styling' },
@@ -206,6 +218,10 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
                 options: {
                   type: 'object',
                   properties: {
+                    title: {
+                      type: 'string',
+                      description: 'Chart title shown at the top left (default: "Project Timeline")',
+                    },
                     view_mode: {
                       type: 'string',
                       enum: ['Day', 'Week', 'Month', 'Year'],
@@ -482,6 +498,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           start: '2024-01-01',
           end: '2024-01-05',
           progress: 100,
+          priority: 'high',
         },
         {
           id: '2',
@@ -490,6 +507,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           end: '2024-01-15',
           progress: 80,
           dependencies: '1',
+          priority: 'high',
         },
         {
           id: '3',
@@ -498,6 +516,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           end: '2024-02-01',
           progress: 30,
           dependencies: '2',
+          priority: 'medium',
         },
         {
           id: '4',
@@ -506,8 +525,13 @@ app.get('/api/examples', (req: Request, res: Response) => {
           end: '2024-02-10',
           progress: 0,
           dependencies: '3',
+          priority: 'medium',
         },
       ],
+      options: {
+        view_mode: 'Month',
+        title: 'Simple Project Timeline',
+      },
     },
     advanced: {
       tasks: [
@@ -519,6 +543,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           progress: 100,
           priority: 'high',
           resource: 'PM',
+          group: 'Preparation',
         },
         {
           id: 'design',
@@ -529,6 +554,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'planning',
           priority: 'high',
           resource: 'Designer',
+          group: 'Design',
         },
         {
           id: 'backend',
@@ -539,6 +565,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'planning',
           priority: 'high',
           resource: 'Backend Dev',
+          group: 'Development',
         },
         {
           id: 'frontend',
@@ -549,6 +576,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'design,backend',
           priority: 'medium',
           resource: 'Frontend Dev',
+          group: 'Development',
         },
         {
           id: 'integration',
@@ -559,6 +587,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'backend,frontend',
           priority: 'high',
           resource: 'Full Stack',
+          group: 'Development',
         },
         {
           id: 'testing',
@@ -569,6 +598,7 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'integration',
           priority: 'medium',
           resource: 'QA',
+          group: 'Quality',
         },
         {
           id: 'deployment',
@@ -579,19 +609,134 @@ app.get('/api/examples', (req: Request, res: Response) => {
           dependencies: 'testing',
           priority: 'high',
           resource: 'DevOps',
+          group: 'Release',
+          milestone: true,
         },
       ],
       options: {
         view_mode: 'Week',
+        title: 'Advanced Project with Teams',
+        today_button: true,
+        popup_on: 'click',
       },
     },
     withDependencies: {
       tasks: [
-        { id: '1', name: 'Foundation', start: '2024-01-01', end: '2024-01-10', progress: 100 },
-        { id: '2', name: 'Layer A', start: '2024-01-10', end: '2024-01-20', progress: 80, dependencies: '1' },
-        { id: '3', name: 'Layer B', start: '2024-01-10', end: '2024-01-20', progress: 70, dependencies: '1' },
-        { id: '4', name: 'Assembly', start: '2024-01-20', end: '2024-01-30', progress: 0, dependencies: '2,3' },
+        {
+          id: '1',
+          name: 'Foundation',
+          start: '2024-01-01',
+          end: '2024-01-10',
+          progress: 100,
+          milestone: false,
+          group: 'Phase 1',
+        },
+        {
+          id: '2',
+          name: 'Layer A',
+          start: '2024-01-10',
+          end: '2024-01-20',
+          progress: 80,
+          dependencies: '1',
+          priority: 'high',
+          group: 'Phase 2',
+        },
+        {
+          id: '3',
+          name: 'Layer B',
+          start: '2024-01-10',
+          end: '2024-01-20',
+          progress: 70,
+          dependencies: '1',
+          priority: 'high',
+          group: 'Phase 2',
+        },
+        {
+          id: '4',
+          name: 'Assembly',
+          start: '2024-01-20',
+          end: '2024-01-30',
+          progress: 0,
+          dependencies: '2,3',
+          priority: 'medium',
+          group: 'Phase 3',
+          milestone: true,
+        },
       ],
+      options: {
+        view_mode: 'Month',
+        title: 'Dependency Chain Project',
+        view_mode_select: true,
+      },
+    },
+    withMilestones: {
+      tasks: [
+        {
+          id: 'kickoff',
+          name: 'Project Kickoff',
+          start: '2024-01-01',
+          end: '2024-01-01',
+          progress: 100,
+          milestone: true,
+          priority: 'high',
+        },
+        {
+          id: 'requirements',
+          name: 'Requirements Gathering',
+          start: '2024-01-02',
+          end: '2024-01-15',
+          progress: 100,
+          priority: 'high',
+        },
+        {
+          id: 'milestone1',
+          name: 'Requirements Complete',
+          start: '2024-01-15',
+          end: '2024-01-15',
+          progress: 100,
+          milestone: true,
+          dependencies: 'requirements',
+        },
+        {
+          id: 'design',
+          name: 'Design Phase',
+          start: '2024-01-16',
+          end: '2024-02-01',
+          progress: 50,
+          dependencies: 'milestone1',
+        },
+        {
+          id: 'milestone2',
+          name: 'Design Review',
+          start: '2024-02-01',
+          end: '2024-02-01',
+          progress: 0,
+          milestone: true,
+          dependencies: 'design',
+        },
+        {
+          id: 'dev',
+          name: 'Development',
+          start: '2024-02-02',
+          end: '2024-03-01',
+          progress: 0,
+          dependencies: 'milestone2',
+        },
+        {
+          id: 'launch',
+          name: 'Launch',
+          start: '2024-03-01',
+          end: '2024-03-01',
+          progress: 0,
+          milestone: true,
+          dependencies: 'dev',
+        },
+      ],
+      options: {
+        view_mode: 'Month',
+        title: 'Milestone-Based Project',
+        today_button: true,
+      },
     },
   });
 });

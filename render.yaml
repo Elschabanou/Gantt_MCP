@@ -13,3 +13,7 @@ services:
         value: production
       - key: PORT
         value: 10000
+      - key: MCP_API_KEY
+        sync: false
+      - key: SERVER_URL
+        sync: false

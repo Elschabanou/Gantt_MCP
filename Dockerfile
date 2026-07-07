@@ -29,6 +29,9 @@ COPY --from=builder /app/dist ./dist
 # Copy public assets (web UI)
 COPY public ./public
 
+# Copy embedded brand fonts (Porsche Next TT) used by the PNG renderer
+COPY assets ./assets
+
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"

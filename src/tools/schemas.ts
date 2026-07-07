@@ -14,6 +14,8 @@ export const GanttTaskSchema = z.object({
   priority: z.enum(['high', 'medium', 'low']).optional(),
   custom_class: z.string().optional(),
   resource: z.string().optional(),
+  group: z.string().optional(),
+  milestone: z.boolean().optional(),
 });
 
 export const GanttOptionsSchema = z.object({
@@ -29,7 +31,7 @@ export const GanttOptionsSchema = z.object({
   popup_on: z.enum(['click', 'hover']).optional(),
   today_button: z.boolean().optional(),
   date_format: z.string().optional(),
-  include_today: z.boolean().optional(),
+  title: z.string().optional(),
 });
 
 export const CreateGanttToolSchema = z.object({
