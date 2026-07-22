@@ -3,6 +3,9 @@ node_modules/
 package-lock.json
 yarn.lock
 
+#Docs
+docs/
+
 # Build output
 dist/
 build/

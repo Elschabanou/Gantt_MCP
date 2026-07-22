@@ -1,3 +1,4 @@
+
 # 09 – Benutzerdokumentation
 
 **Service:** MCP Gantt Server · **Stand:** 2026-07-07

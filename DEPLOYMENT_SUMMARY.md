@@ -36,8 +36,8 @@ GET  /            → Web UI
 
 | Feature | Local Dev | Cloud |
 |---------|-----------|-------|
-| Web UI | ✅ http://localhost:3000 | ✅ https://server.onrender.com |
-| MCP Endpoint | ✅ http://localhost:3000/mcp | ✅ https://server.onrender.com/mcp |
+| Web UI | ✅ http://localhost:3000 | ✅ https://gantt-mcp.onrender.com |
+| MCP Endpoint | ✅ http://localhost:3000/mcp | ✅ https://gantt-mcp.onrender.com |
 | Copilot Integration | ✅ Lokal (Dev) | ✅ Production Ready |
 | Auto-Validation | ✅ | ✅ |
 | Circular Dependency Detection | ✅ | ✅ |
