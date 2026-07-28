@@ -168,7 +168,7 @@ app.post('/mcp', requireApiKey, async (req: Request, res: Response) => {
     
 Input should be a JSON object with:
 - tasks: Array of task objects with required fields (id, name, start, end)
-- options: Optional Gantt display options (view_mode, bar_height, etc.)
+- options: Optional Gantt display options (title, bar_height)
 
 Each task must have:
 - id: Unique identifier (string)
@@ -177,18 +177,19 @@ Each task must have:
 - end: End date in YYYY-MM-DD format (for a milestone, use the same value as start)
 - group: Project/swimlane label (optional). Tasks sharing a group share a color; use "Name / Subtitle" for a two-line label. Groups are colored pink, then teal, then green in order of appearance.
 - milestone: true to render this item as a triangle marker (uses start as the date) instead of a bar (optional)
-- dependencies: Comma-separated task IDs this task depends on (optional)
+- dependencies: Comma-separated task IDs this task depends on (optional). Drawn as thin arrows from each predecessor to this task.
 - priority: 'high', 'medium', or 'low' (optional)
-- custom_class: CSS class name (optional)
 - resource: Resource/person assignment (optional)
+- risk: 'low', 'medium', or 'high' (optional). Marks the task as at risk: its bar gets a colored outline and it is listed in a "Risks" section below the chart. Use it to point out schedule risks such as tight deadlines, blocking dependencies or overloaded resources.
+- risk_note: Short reason for the risk, shown next to the task in the risk section (optional, requires risk)
 
 Options may include:
 - title: Chart title shown at the top left (default: "Project Timeline")
+- bar_height: Height of task bars in pixels (default: 22)
 
 Validation includes:
 ✓ Circular dependency detection
 ✓ Date format and logic validation
-✓ Resource capacity checks
 
 Returns a static PNG image preview of the Gantt chart ready to display.`,
             inputSchema: {
@@ -208,8 +209,18 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
                       milestone: { type: 'boolean', description: 'Render as a triangle marker (uses start as the date) instead of a bar' },
                       dependencies: { type: 'string', description: 'Comma-separated dependent task IDs' },
                       priority: { type: 'string', enum: ['high', 'medium', 'low'] },
-                      custom_class: { type: 'string', description: 'CSS class for styling' },
                       resource: { type: 'string', description: 'Resource or person assignment' },
+                      risk: {
+                        type: 'string',
+                        enum: ['low', 'medium', 'high'],
+                        description:
+                          'Flag this task as at risk. Outlines the bar in the risk colour and lists the task in a "Risks" section below the chart. Only set it for tasks that really are at risk.',
+                      },
+                      risk_note: {
+                        type: 'string',
+                        description:
+                          'Short reason for the risk (e.g. "Depends on external supplier"), shown next to the task in the risk section. Requires `risk`.',
+                      },
                     },
                     required: ['id', 'name', 'start', 'end'],
                   },
@@ -222,22 +233,10 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
                       type: 'string',
                       description: 'Chart title shown at the top left (default: "Project Timeline")',
                     },
-                    view_mode: {
-                      type: 'string',
-                      enum: ['Day', 'Week', 'Month', 'Year'],
-                      description: 'Timeline view mode (default: Month)',
-                    },
                     bar_height: {
                       type: 'number',
-                      description: 'Height of task bars in pixels (default: 30)',
+                      description: 'Height of task bars in pixels (default: 22)',
                     },
-                    column_width: {
-                      type: 'number',
-                      description: 'Width of timeline columns (default: 45)',
-                    },
-                    readonly: { type: 'boolean', description: 'Disable all edits (default: false)' },
-                    today_button: { type: 'boolean', description: 'Show today button (default: true)' },
-                    popup_on: { type: 'string', enum: ['click', 'hover'], description: 'When to show popup' },
                   },
                   description: 'Optional Gantt display options',
                 },
@@ -736,6 +735,71 @@ app.get('/api/examples', (req: Request, res: Response) => {
         view_mode: 'Month',
         title: 'Milestone-Based Project',
         today_button: true,
+      },
+    },
+    withRisks: {
+      tasks: [
+        {
+          id: 'concept',
+          name: 'Concept & Scoping',
+          start: '2026-08-03',
+          end: '2026-08-21',
+          progress: 100,
+          resource: 'PM',
+          group: 'Planning',
+        },
+        {
+          id: 'supplier',
+          name: 'Supplier Selection',
+          start: '2026-08-24',
+          end: '2026-09-18',
+          progress: 40,
+          dependencies: 'concept',
+          resource: 'Procurement',
+          group: 'Planning',
+          risk: 'high',
+          risk_note: 'External supplier not confirmed — blocks the whole build phase',
+        },
+        {
+          id: 'prototype',
+          name: 'Prototype Build',
+          start: '2026-09-21',
+          end: '2026-10-23',
+          progress: 0,
+          dependencies: 'supplier',
+          resource: 'Engineering',
+          group: 'Execution',
+          risk: 'medium',
+          risk_note: 'Depends on material delivery, only 1 week buffer',
+        },
+        {
+          id: 'testing',
+          name: 'Test & Validation',
+          start: '2026-10-26',
+          end: '2026-11-20',
+          progress: 0,
+          dependencies: 'prototype',
+          resource: 'QA',
+          group: 'Execution',
+          risk: 'low',
+          risk_note: 'Test rig shared with another project',
+        },
+        {
+          id: 'launch',
+          name: 'Trade Fair Launch',
+          start: '2026-12-01',
+          end: '2026-12-01',
+          progress: 0,
+          milestone: true,
+          dependencies: 'testing',
+          group: 'Release',
+          risk: 'high',
+          risk_note: 'Fixed external date, cannot be moved',
+        },
+      ],
+      options: {
+        view_mode: 'Month',
+        title: 'Project with Risk Assessment',
       },
     },
   });

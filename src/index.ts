@@ -6,8 +6,6 @@
  * 
  * The main MCP HTTP endpoint is at: POST /mcp
  * Web-UI is at: GET / or http://localhost:3000
- * 
- * Force rebuild trigger v2
  */
 
 import('./web/app.js').catch((error) => {

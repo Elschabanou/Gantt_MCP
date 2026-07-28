@@ -12,10 +12,11 @@ export const GanttTaskSchema = z.object({
   progress: z.number().min(0).max(100).optional(),
   dependencies: z.string().optional(),
   priority: z.enum(['high', 'medium', 'low']).optional(),
-  custom_class: z.string().optional(),
   resource: z.string().optional(),
   group: z.string().optional(),
   milestone: z.boolean().optional(),
+  risk: z.enum(['low', 'medium', 'high']).optional(),
+  risk_note: z.string().optional(),
 });
 
 export const GanttOptionsSchema = z.object({
@@ -38,7 +39,3 @@ export const CreateGanttToolSchema = z.object({
   tasks: z.array(GanttTaskSchema).nonempty('At least one task is required'),
   options: GanttOptionsSchema.optional(),
 });
-
-export type GanttTask = z.infer<typeof GanttTaskSchema>;
-export type GanttOptions = z.infer<typeof GanttOptionsSchema>;
-export type CreateGanttTool = z.infer<typeof CreateGanttToolSchema>;

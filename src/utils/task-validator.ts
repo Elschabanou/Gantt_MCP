@@ -1,21 +1,10 @@
-import { GanttTask, ValidationResult, ValidationError, ResourceCapacity } from '../types.js';
+import { GanttTask, ValidationResult, ValidationError } from '../types.js';
 import { DependencyChecker } from './dependency-checker.js';
 
 /**
  * Comprehensive validator for Gantt tasks
  */
 export class GanttValidator {
-  private resourceCapacities: Map<string, ResourceCapacity>;
-
-  constructor(resourceCapacities?: ResourceCapacity[]) {
-    this.resourceCapacities = new Map();
-    if (resourceCapacities) {
-      for (const cap of resourceCapacities) {
-        this.resourceCapacities.set(cap.resourceId, cap);
-      }
-    }
-  }
-
   /**
    * Validate all tasks
    */
@@ -55,11 +44,6 @@ export class GanttValidator {
     // Check for dependency issues
     errors.push(...DependencyChecker.validateDependencyReferences(tasks));
     errors.push(...DependencyChecker.checkCircularDependencies(tasks));
-
-    // Check resource capacity if configured
-    if (this.resourceCapacities.size > 0) {
-      warnings.push(...this.validateResourceCapacity(tasks));
-    }
 
     // Check for scheduling conflicts
     warnings.push(...this.checkSchedulingConflicts(tasks));
@@ -181,70 +165,6 @@ export class GanttValidator {
   }
 
   /**
-   * Validate resource capacity constraints
-   */
-  private validateResourceCapacity(tasks: GanttTask[]): ValidationError[] {
-    const warnings: ValidationError[] = [];
-
-    // Group tasks by resource
-    const resourceTasks = new Map<string, GanttTask[]>();
-    for (const task of tasks) {
-      if (task.resource) {
-        if (!resourceTasks.has(task.resource)) {
-          resourceTasks.set(task.resource, []);
-        }
-        resourceTasks.get(task.resource)!.push(task);
-      }
-    }
-
-    // Check capacity constraints
-    for (const [resourceId, tasksForResource] of resourceTasks) {
-      const capacity = this.resourceCapacities.get(resourceId);
-      if (!capacity) continue;
-
-      if (capacity.maxConcurrent) {
-        const overlapping = this.findOverlappingTasks(tasksForResource);
-        if (overlapping.length > capacity.maxConcurrent) {
-          warnings.push({
-            taskId: '',
-            field: 'resource',
-            message: `Resource "${resourceId}" has ${overlapping.length} concurrent tasks, max allowed: ${capacity.maxConcurrent}`,
-            severity: 'error',
-          });
-        }
-      }
-    }
-
-    return warnings;
-  }
-
-  /**
-   * Find overlapping tasks
-   */
-  private findOverlappingTasks(tasks: GanttTask[]): GanttTask[] {
-    const overlapping: GanttTask[] = [];
-
-    for (let i = 0; i < tasks.length; i++) {
-      for (let j = i + 1; j < tasks.length; j++) {
-        const task1 = tasks[i];
-        const task2 = tasks[j];
-
-        const start1 = new Date(task1.start);
-        const end1 = new Date(task1.end);
-        const start2 = new Date(task2.start);
-        const end2 = new Date(task2.end);
-
-        // Check for overlap
-        if (start1 <= end2 && start2 <= end1) {
-          overlapping.push(task1, task2);
-        }
-      }
-    }
-
-    return [...new Set(overlapping)]; // Remove duplicates
-  }
-
-  /**
    * Check for scheduling conflicts
    */
   private checkSchedulingConflicts(tasks: GanttTask[]): ValidationError[] {
@@ -256,7 +176,7 @@ export class GanttValidator {
 
     for (const task of tasks) {
       const endDate = new Date(task.end);
-      if (endDate < today && (task.progress ?? 0) < 100) {
+      if (endDate < today && task.progress !== undefined && task.progress < 100) {
         warnings.push({
           taskId: task.id,
           field: 'end',

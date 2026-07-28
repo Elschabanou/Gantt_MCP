@@ -40,6 +40,14 @@ interface Segment {
   label: string;
 }
 
+interface Geometry {
+  x0: number;
+  x1: number;
+  centerY: number;
+  topY: number; // top edge of the bar / milestone marker
+  isMilestone: boolean;
+}
+
 // Layout constants
 const WIDTH = 1200;
 const TEXT_LEFT = 36;
@@ -55,6 +63,17 @@ const ROW_H = 34;
 const MS_ROW_H = 54;
 const GROUP_GAP = 22;
 const BOTTOM_PAD = 40;
+
+// Risk section below the chart
+const RISK_TOP_GAP = 26; // space between last row and the section divider
+const RISK_TITLE_H = 30; // divider -> baseline of the first risk entry
+const RISK_ROW_H = 21;
+
+const RISK_COLORS: Record<string, string> = {
+  high: '#ff5a5f',
+  medium: '#ffa62b',
+  low: '#ffd94a',
+};
 
 // Five-color palette: pink -> teal -> green -> amber -> violet (rotates per group)
 const PALETTE = [
@@ -107,7 +126,15 @@ export class GanttSVGGenerator {
       y += GROUP_GAP;
     });
     const contentBottom = rows.length > 0 ? y - GROUP_GAP : CONTENT_TOP;
-    const totalHeight = contentBottom + BOTTOM_PAD;
+
+    // Tasks the caller flagged as at risk, most severe first, get their own
+    // section below the chart (and an outline on their bar).
+    const riskTasks = tasks
+      .filter((task) => task.risk !== undefined)
+      .sort((a, b) => this.riskRank(b.risk) - this.riskRank(a.risk));
+    const riskSectionHeight =
+      riskTasks.length > 0 ? RISK_TOP_GAP + RISK_TITLE_H + riskTasks.length * RISK_ROW_H : 0;
+    const totalHeight = contentBottom + riskSectionHeight + BOTTOM_PAD;
 
     const segments = this.buildSegments(bounds.minDate, bounds.maxDate, span, chartLeft, usable);
 
@@ -127,6 +154,10 @@ export class GanttSVGGenerator {
           : this.renderBar(row, bounds.minDate, span, barHeight, chartLeft, usable)
       )
       .join('\n  ');
+
+    const geometry = this.buildGeometry(rows, bounds.minDate, span, barHeight, chartLeft, usable);
+    const depsSvg = this.renderDependencies(rows, geometry);
+    const risksSvg = this.renderRiskSection(riskTasks, contentBottom, chartLeft);
 
     // Darkened photo background: full-bleed image + dark gradient overlay so the
     // white labels/bars stay readable. Falls back to the plain gradient if the
@@ -184,6 +215,9 @@ export class GanttSVGGenerator {
       <stop offset="0%" stop-color="#0b0c10" stop-opacity="0.72" />
       <stop offset="100%" stop-color="#0b0c10" stop-opacity="0" />
     </linearGradient>
+    <marker id="dep-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0,0.5 L8,4 L0,7.5 Z" fill="rgba(226,233,240,0.7)" />
+    </marker>
     <style>
       .title { font: 700 27px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; letter-spacing: -0.3px; }
       .timeline-label { font: 700 15px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #f2f6fa; }
@@ -193,6 +227,12 @@ export class GanttSVGGenerator {
       .bar-date { font: 400 11px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: rgba(255,255,255,0.92); }
       .ms-label { font: 700 12px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; }
       .ms-date { font: 400 11px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #aeb6bf; }
+      .dep-line { fill: none; stroke: rgba(226,233,240,0.5); stroke-width: 1.2; stroke-linecap: butt; stroke-linejoin: round; }
+      .risk-title { font: 700 14px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; letter-spacing: 0.6px; }
+      .risk-level { font: 700 11px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; letter-spacing: 0.4px; }
+      .risk-task { font: 700 12px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #ffffff; }
+      .risk-note { font: 400 12px 'Porsche Next TT', 'Segoe UI', -apple-system, 'Helvetica Neue', Arial, sans-serif; fill: #aeb6bf; }
+      .risk-divider { stroke: rgba(255,255,255,0.18); stroke-width: 1; }
       .gridline { stroke: rgba(255,255,255,0.30); stroke-width: 1.4; stroke-dasharray: 5 5; }
       .header-divider { stroke: rgba(255,255,255,0.22); stroke-width: 1; }
     </style>
@@ -209,6 +249,10 @@ export class GanttSVGGenerator {
   ${groupsSvg}
 
   ${rowsSvg}
+
+  ${depsSvg}
+
+  ${risksSvg}
 </svg>`;
   }
 
@@ -267,6 +311,12 @@ export class GanttSVGGenerator {
     const textY = centerY + 4;
 
     const rect = `<rect x="${this.fmt(startX)}" y="${this.fmt(barY)}" width="${this.fmt(width)}" height="${barHeight}" rx="4" fill="url(#bar-${row.colorIndex})" />`;
+    // At-risk bars get an outline in the risk colour, drawn just outside the
+    // fill so it stays readable on every palette colour.
+    const riskColor = this.riskColor(row.task.risk);
+    const riskRing = riskColor
+      ? `\n  <rect x="${this.fmt(startX - 2)}" y="${this.fmt(barY - 2)}" width="${this.fmt(width + 4)}" height="${barHeight + 4}" rx="6" fill="none" stroke="${riskColor}" stroke-width="1.6" />`
+      : '';
     const startLabel = this.fmtMonthYear(row.task.start);
     const endLabel = this.fmtMonthYear(row.task.end);
     const nameW = row.task.name.length * 6.8;
@@ -283,14 +333,18 @@ export class GanttSVGGenerator {
   ${center}
   <text x="${this.fmt(endX - 10)}" y="${this.fmt(textY)}" text-anchor="end" class="bar-date">${endLabel}</text>`;
       } else {
-        // Dates just outside the ends (clamped to the chart), name centered inside.
-        const startInside = startX < chartLeft + 40;
-        const endInside = endX > CHART_RIGHT - 40;
-        const sX = startInside ? startX + 8 : startX - 8;
-        const eX = endInside ? endX - 8 : endX + 8;
-        texts = `<text x="${this.fmt(sX)}" y="${this.fmt(textY)}" text-anchor="${startInside ? 'start' : 'end'}" class="bar-date">${startLabel}</text>
-  ${center}
-  <text x="${this.fmt(eX)}" y="${this.fmt(textY)}" text-anchor="${endInside ? 'end' : 'start'}" class="bar-date">${endLabel}</text>`;
+        // Dates just outside the ends, name centered inside. Near the chart
+        // edges there is no room outside, and moving a date inside would run
+        // into the centered name — so that date is dropped instead.
+        const startFits = startX - 8 > chartLeft + 32;
+        const endFits = endX + 8 < CHART_RIGHT - 32;
+        const startDate = startFits
+          ? `<text x="${this.fmt(startX - 8)}" y="${this.fmt(textY)}" text-anchor="end" class="bar-date">${startLabel}</text>\n  `
+          : '';
+        const endDate = endFits
+          ? `\n  <text x="${this.fmt(endX + 8)}" y="${this.fmt(textY)}" text-anchor="start" class="bar-date">${endLabel}</text>`
+          : '';
+        texts = `${startDate}${center}${endDate}`;
       }
     } else {
       // Name too long for the bar: place it beside the bar, no dates (avoids overlap).
@@ -300,7 +354,7 @@ export class GanttSVGGenerator {
         texts = nameText(startX - 8, 'end');
       }
     }
-    return `${rect}\n  ${texts}`;
+    return `${rect}${riskRing}\n  ${texts}`;
   }
 
   private static renderMilestone(
@@ -321,10 +375,235 @@ export class GanttSVGGenerator {
     // Keep labels inside the canvas near the edges.
     const anchor = mx > CHART_RIGHT - 60 ? 'end' : mx < chartLeft + 60 ? 'start' : 'middle';
     const tx = anchor === 'end' ? mx + 6 : anchor === 'start' ? mx - 6 : mx;
-    const triangle = `<polygon points="${this.fmt(mx)},${ty} ${this.fmt(mx - 7)},${ty + 13} ${this.fmt(mx + 7)},${ty + 13}" fill="${color.bright}" />`;
+    const riskColor = this.riskColor(row.task.risk);
+    const riskStroke = riskColor
+      ? ` stroke="${riskColor}" stroke-width="1.6" stroke-linejoin="round"`
+      : '';
+    const triangle = `<polygon points="${this.fmt(mx)},${ty} ${this.fmt(mx - 7)},${ty + 13} ${this.fmt(mx + 7)},${ty + 13}" fill="${color.bright}"${riskStroke} />`;
     const label = `<text x="${this.fmt(tx)}" y="${ty + 29}" text-anchor="${anchor}" class="ms-label">${this.escapeXml(row.task.name)}</text>`;
     const dateText = `<text x="${this.fmt(tx)}" y="${ty + 44}" text-anchor="${anchor}" class="ms-date">${this.fmtMonthYear(row.task.start)}</text>`;
     return `${triangle}\n  ${label}\n  ${dateText}`;
+  }
+
+  /**
+   * "Risks" list below the chart: one line per flagged task with a warning
+   * triangle in the risk colour, the level, the task name and its note.
+   * Returns an empty string when nothing is flagged, so the chart keeps its
+   * original footprint.
+   */
+  private static renderRiskSection(
+    riskTasks: SvgTask[],
+    contentBottom: number,
+    chartLeft: number
+  ): string {
+    if (riskTasks.length === 0) return '';
+
+    const dividerY = contentBottom + RISK_TOP_GAP;
+    const x = Math.min(TEXT_LEFT, chartLeft);
+    // Fixed columns keep the list readable as a table regardless of name length.
+    const nameX = x + 74;
+    const noteX = nameX + 226;
+    const parts = [
+      `<line x1="${x}" y1="${this.fmt(dividerY)}" x2="${CHART_RIGHT}" y2="${this.fmt(dividerY)}" class="risk-divider" />`,
+      `<text x="${x}" y="${this.fmt(dividerY + 21)}" class="risk-title">RISKS</text>`,
+    ];
+
+    riskTasks.forEach((task, index) => {
+      const color = this.riskColor(task.risk) ?? RISK_COLORS.medium;
+      const baseline = dividerY + RISK_TITLE_H + index * RISK_ROW_H + 12;
+      const iconY = baseline - 9;
+      // Warning triangle, matching the milestone marker's visual language.
+      parts.push(
+        `<polygon points="${x + 5},${this.fmt(iconY)} ${x},${this.fmt(iconY + 9)} ${x + 10},${this.fmt(iconY + 9)}" fill="${color}" />`
+      );
+      parts.push(
+        `<text x="${x + 18}" y="${this.fmt(baseline)}" class="risk-level" fill="${color}">${(task.risk ?? '').toUpperCase()}</text>`
+      );
+      parts.push(
+        `<text x="${nameX}" y="${this.fmt(baseline)}" class="risk-task">${this.escapeXml(this.truncate(task.name, 30))}</text>`
+      );
+      const note = task.risk_note?.trim();
+      if (note) {
+        parts.push(
+          `<text x="${noteX}" y="${this.fmt(baseline)}" class="risk-note">${this.escapeXml(this.truncate(note, Math.floor((CHART_RIGHT - noteX) / 6.4)))}</text>`
+        );
+      }
+    });
+
+    return parts.join('\n  ');
+  }
+
+  private static riskColor(risk?: string): string | undefined {
+    return risk ? RISK_COLORS[risk] : undefined;
+  }
+
+  private static riskRank(risk?: string): number {
+    return risk === 'high' ? 3 : risk === 'medium' ? 2 : risk === 'low' ? 1 : 0;
+  }
+
+  private static truncate(text: string, maxChars: number): string {
+    return text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
+  }
+
+  /**
+   * Bar/milestone geometry per task id, used to anchor dependency arrows.
+   * Mirrors the x/y math in renderBar / renderMilestone.
+   */
+  private static buildGeometry(
+    rows: Row[],
+    minDate: Date,
+    span: number,
+    barHeight: number,
+    chartLeft: number,
+    usable: number
+  ): Map<string, Geometry> {
+    const geometry = new Map<string, Geometry>();
+    for (const row of rows) {
+      if (row.isMilestone) {
+        const date = this.parseDate(row.task.start);
+        const mx = this.clamp(
+          chartLeft + ((this.diffDays(minDate, date) + 0.5) / span) * usable,
+          chartLeft,
+          CHART_RIGHT
+        );
+        const topY = row.y + 8;
+        geometry.set(row.task.id, {
+          x0: mx,
+          x1: mx,
+          centerY: topY + 6.5,
+          topY,
+          isMilestone: true,
+        });
+      } else {
+        const start = this.parseDate(row.task.start);
+        const end = this.parseDate(row.task.end);
+        const startX = this.xForDate(minDate, span, start, chartLeft, usable);
+        const endX = this.xForDate(minDate, span, this.addDays(end, 1), chartLeft, usable);
+        const width = Math.max(8, endX - startX);
+        const barY = row.y + (row.height - barHeight) / 2;
+        geometry.set(row.task.id, {
+          x0: startX,
+          x1: startX + width,
+          centerY: barY + barHeight / 2,
+          topY: barY,
+          isMilestone: false,
+        });
+      }
+    }
+    return geometry;
+  }
+
+  /**
+   * Thin orthogonal arrows from each dependency's bar to its dependent task's
+   * bar (task.dependencies is a comma-separated list of predecessor task ids).
+   */
+  private static renderDependencies(rows: Row[], geometry: Map<string, Geometry>): string {
+    const arrows: string[] = [];
+    for (const row of rows) {
+      const raw = row.task.dependencies;
+      if (!raw) continue;
+      const target = geometry.get(row.task.id);
+      if (!target) continue;
+      for (const depId of raw.split(',').map((id) => id.trim()).filter(Boolean)) {
+        if (depId === row.task.id) continue;
+        const source = geometry.get(depId);
+        if (!source) continue;
+        arrows.push(this.renderDependencyArrow(source, target));
+      }
+    }
+    return arrows.join('\n  ');
+  }
+
+  /**
+   * Routes finish-to-start as right-angle segments: leave the predecessor's
+   * right edge, step down/up in the gap between rows, then enter the successor
+   * from the left (or from above, for a milestone marker). When the successor
+   * starts left of the predecessor's end there is no room for a single elbow,
+   * so the line detours through the midpoint between both rows.
+   */
+  private static renderDependencyArrow(source: Geometry, target: Geometry): string {
+    const STUB = 11; // horizontal breathing room before/after a corner
+    const x1 = source.x1;
+    const y1 = source.centerY;
+
+    let points: Array<[number, number]>;
+
+    if (target.isMilestone) {
+      // Enter the triangle from above so the arrowhead sits on its apex.
+      const mx = target.x0;
+      const my = target.topY - 5;
+      points =
+        mx >= x1 + STUB
+          ? [
+              [x1, y1],
+              [mx, y1],
+              [mx, my],
+            ]
+          : [
+              [x1, y1],
+              [x1 + STUB, y1],
+              [x1 + STUB, (y1 + my) / 2],
+              [mx, (y1 + my) / 2],
+              [mx, my],
+            ];
+    } else {
+      const x2 = target.x0 - 5;
+      const y2 = target.centerY;
+      if (Math.abs(y2 - y1) < 0.5) {
+        points = [
+          [x1, y1],
+          [x2, y2],
+        ];
+      } else if (x2 - STUB > x1 + 2) {
+        points = [
+          [x1, y1],
+          [x2 - STUB, y1],
+          [x2 - STUB, y2],
+          [x2, y2],
+        ];
+      } else {
+        const midY = (y1 + y2) / 2;
+        points = [
+          [x1, y1],
+          [x1 + STUB, y1],
+          [x1 + STUB, midY],
+          [x2 - STUB, midY],
+          [x2 - STUB, y2],
+          [x2, y2],
+        ];
+      }
+    }
+
+    return `<path d="${this.orthPath(points)}" class="dep-line" marker-end="url(#dep-arrow)" />`;
+  }
+
+  /**
+   * Turns a polyline into a path whose corners are slightly rounded, keeping
+   * the segments crisp while avoiding hard pixel-stepped joins.
+   */
+  private static orthPath(points: Array<[number, number]>, radius = 4): string {
+    const pts = points.filter(
+      (point, i) =>
+        i === 0 || Math.abs(point[0] - points[i - 1][0]) > 0.01 || Math.abs(point[1] - points[i - 1][1]) > 0.01
+    );
+    if (pts.length < 2) return '';
+
+    let d = `M ${this.fmt(pts[0][0])},${this.fmt(pts[0][1])}`;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [px, py] = pts[i - 1];
+      const [cx, cy] = pts[i];
+      const [nx, ny] = pts[i + 1];
+      const inLen = Math.hypot(cx - px, cy - py);
+      const outLen = Math.hypot(nx - cx, ny - cy);
+      const r = Math.min(radius, inLen / 2, outLen / 2);
+      const ax = cx + ((px - cx) / inLen) * r;
+      const ay = cy + ((py - cy) / inLen) * r;
+      const bx = cx + ((nx - cx) / outLen) * r;
+      const by = cy + ((ny - cy) / outLen) * r;
+      d += ` L ${this.fmt(ax)},${this.fmt(ay)} Q ${this.fmt(cx)},${this.fmt(cy)} ${this.fmt(bx)},${this.fmt(by)}`;
+    }
+    const last = pts[pts.length - 1];
+    return `${d} L ${this.fmt(last[0])},${this.fmt(last[1])}`;
   }
 
   private static buildSegments(

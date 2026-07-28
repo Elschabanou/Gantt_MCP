@@ -10,10 +10,11 @@ export interface GanttTask {
   progress?: number; // 0-100
   dependencies?: string; // comma-separated task IDs
   priority?: 'high' | 'medium' | 'low';
-  custom_class?: string;
   resource?: string; // optional resource/person assignment
   group?: string; // project/swimlane label; tasks sharing a group share a color. Use "Name / Subtitle" for a two-line label.
   milestone?: boolean; // render as a triangle marker instead of a bar (uses `start` as the date)
+  risk?: 'low' | 'medium' | 'high'; // flags the task as at risk: outlines the bar and lists it in the risk section
+  risk_note?: string; // short reason shown next to the task in the risk section
 }
 
 export interface GanttOptions {
@@ -43,10 +44,4 @@ export interface ValidationResult {
   valid: boolean;
   errors: ValidationError[];
   warnings: ValidationError[];
-}
-
-export interface ResourceCapacity {
-  resourceId: string;
-  maxConcurrent?: number;
-  totalCapacity?: number;
 }
