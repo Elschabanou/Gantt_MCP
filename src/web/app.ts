@@ -315,6 +315,15 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
                 type: 'text',
                 text: responseText,
               },
+              // Trial: inline image content block, in addition to the URL above.
+              // Some MCP clients (e.g. Claude Desktop) render this directly; others
+              // (Perplexity, Copilot Studio) are expected to ignore it and fall back
+              // to the markdown link in the text block.
+              {
+                type: 'image',
+                data: pngBuffer.toString('base64'),
+                mimeType: 'image/png',
+              },
             ],
           };
         }
