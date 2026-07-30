@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import { GanttValidator } from '../utils/task-validator.js';
 import { GanttHTMLGenerator } from '../utils/html-generator.js';
 import { GanttPNGGenerator } from '../utils/png-generator.js';
+import { GanttPPTXGenerator } from '../utils/pptx-generator.js';
 import { GanttTask, GanttOptions } from '../types.js';
 import { CreateGanttToolSchema } from '../tools/schemas.js';
 import { requireApiKey } from '../middleware/auth.js';
@@ -33,19 +34,41 @@ if (!process.env.MCP_API_KEY) {
 }
 
 // ========================
-// IMAGE CACHE (In-Memory)
+// ASSET CACHE (In-Memory)
 // ========================
-// Store generated PNG images with unique IDs for public serving
-const imageCache = new Map<string, { buffer: Buffer; timestamp: number }>();
+// Store generated PNG/PPTX assets with unique IDs for public serving.
+const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+interface CachedAsset {
+  buffer: Buffer;
+  mimeType: string;
+  timestamp: number;
+  filename?: string;
+}
+const assetCache = new Map<string, CachedAsset>();
 
-// Clean up old images every 30 minutes once the cache exceeds 10 entries
+function cacheAsset(buffer: Buffer, mimeType: string, filename?: string): string {
+  const id = randomUUID();
+  assetCache.set(id, { buffer, mimeType, timestamp: Date.now(), filename });
+  return id;
+}
+
+function pptxFileName(title?: string): string {
+  const safe = (title?.trim() || 'gantt').replace(/[^\w\-. ]+/g, '_').slice(0, 60).trim();
+  return `${safe || 'gantt'}.pptx`;
+}
+
+// Clean up old assets every 30 minutes once the cache exceeds 40 entries.
+// Keeps the newest 20 rather than nuking everything above a threshold (the
+// previous PNG-only version deleted `sorted.slice(0, 25)`, which for cache
+// sizes 11-25 deleted *every* entry, including one handed to a client seconds
+// earlier).
 setInterval(() => {
-  if (imageCache.size > 10) {
-    const sorted = Array.from(imageCache.entries())
+  if (assetCache.size > 40) {
+    const sorted = Array.from(assetCache.entries())
       .sort((a, b) => a[1].timestamp - b[1].timestamp);
-    // Remove oldest 25 images
-    sorted.slice(0, 25).forEach(([key]) => imageCache.delete(key));
-    console.log(`[Image Cache] Cleaned up old images. Cache size: ${imageCache.size}`);
+    const toRemove = sorted.slice(0, Math.max(0, sorted.length - 20));
+    toRemove.forEach(([key]) => assetCache.delete(key));
+    console.log(`[Asset Cache] Cleaned up old assets. Cache size: ${assetCache.size}`);
   }
 }, 30 * 60 * 1000);
 
@@ -191,7 +214,7 @@ Validation includes:
 ✓ Circular dependency detection
 ✓ Date format and logic validation
 
-Returns a static PNG image preview of the Gantt chart ready to display.`,
+Returns a static PNG image preview of the Gantt chart, plus a download link to an editable PowerPoint (.pptx) of the same chart: the chart background (grid, timeline, labels) is one image, and every task bar / milestone is a real, movable PowerPoint shape. Always mention the PowerPoint link to the user — dependency arrows and the timeline are part of the background image and won't move if a bar is dragged.`,
             inputSchema: {
               type: 'object',
               properties: {
@@ -283,16 +306,17 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
             ],
           };
         } else {
-          // Generate PNG visual asset
-          const pngBuffer = await GanttPNGGenerator.generate(
-            validatedInput.tasks as GanttTask[],
-            validatedInput.options
-          );
+          // Generate the PNG preview and the editable PowerPoint in parallel
+          // (both are pure functions over the same tasks/options).
+          const [pngBuffer, pptxBuffer] = await Promise.all([
+            GanttPNGGenerator.generate(validatedInput.tasks as GanttTask[], validatedInput.options),
+            GanttPPTXGenerator.generate(validatedInput.tasks as GanttTask[], validatedInput.options),
+          ]);
 
-          // Store PNG in cache and generate public URL
-          const imageId = randomUUID();
-          imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
+          const imageId = cacheAsset(pngBuffer, 'image/png');
+          const pptxId = cacheAsset(pptxBuffer, PPTX_MIME, pptxFileName(validatedInput.options?.title));
           const imageUrl = `${SERVER_URL}/gantt-image/${imageId}.png`;
+          const pptxUrl = `${SERVER_URL}/gantt-pptx/${pptxId}.pptx`;
 
           // Build response text
           let responseText = `✅ Gantt diagram generated successfully!\n\n`;
@@ -307,6 +331,8 @@ Returns a static PNG image preview of the Gantt chart ready to display.`,
 
           responseText += `\n📈 Visual diagram:\n`;
           responseText += `![Gantt Diagram](${imageUrl})`;
+          responseText += `\n\n📥 Editierbare PowerPoint (Balken sind echte Shapes):\n`;
+          responseText += `[PowerPoint herunterladen](${pptxUrl})`;
 
           result = {
             isError: false,
@@ -385,15 +411,38 @@ app.get('/health', (req: Request, res: Response) => {
  */
 app.get('/gantt-image/:id.png', (req: Request, res: Response) => {
   const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-  const cached = imageCache.get(id);
+  const cached = assetCache.get(id);
 
-  if (!cached) {
+  if (!cached || cached.mimeType !== 'image/png') {
     console.warn(`[Image] Not found: ${id}`);
     return res.status(404).json({ error: 'Image not found' });
   }
 
   console.log(`[Image] Serving: ${id}`);
   res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.send(cached.buffer);
+});
+
+/**
+ * ========================
+ * PUBLIC POWERPOINT ENDPOINT
+ * ========================
+ * Serve cached .pptx presentations by ID — the editable counterpart to the
+ * PNG preview above, with the same "cache buffer, hand back a URL" pattern.
+ */
+app.get('/gantt-pptx/:id.pptx', (req: Request, res: Response) => {
+  const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const cached = assetCache.get(id);
+
+  if (!cached || cached.mimeType !== PPTX_MIME) {
+    console.warn(`[PPTX] Not found: ${id}`);
+    return res.status(404).json({ error: 'Presentation not found' });
+  }
+
+  console.log(`[PPTX] Serving: ${id} (${cached.buffer.length} bytes)`);
+  res.setHeader('Content-Type', PPTX_MIME);
+  res.setHeader('Content-Disposition', `attachment; filename="${cached.filename ?? 'gantt.pptx'}"`);
   res.setHeader('Cache-Control', 'public, max-age=3600');
   res.send(cached.buffer);
 });
@@ -435,17 +484,21 @@ app.post('/api/gantt', async (req: Request, res: Response) => {
       });
     }
 
-    // Generate HTML and PNG preview
+    // Generate HTML preview plus the PNG and PPTX outputs in parallel
     const html = GanttHTMLGenerator.generate(tasks as GanttTask[], options as GanttOptions);
-    const pngBuffer = await GanttPNGGenerator.generate(tasks as GanttTask[], options as GanttOptions);
+    const [pngBuffer, pptxBuffer] = await Promise.all([
+      GanttPNGGenerator.generate(tasks as GanttTask[], options as GanttOptions),
+      GanttPPTXGenerator.generate(tasks as GanttTask[], options as GanttOptions),
+    ]);
     const pngBase64 = pngBuffer.toString('base64');
 
-    // Store PNG in cache and generate public URL (for Perplexity)
-    const imageId = randomUUID();
-    imageCache.set(imageId, { buffer: pngBuffer, timestamp: Date.now() });
+    // Store PNG/PPTX in cache and generate public URLs (for Perplexity and the local test UI)
+    const imageId = cacheAsset(pngBuffer, 'image/png');
+    const pptxId = cacheAsset(pptxBuffer, PPTX_MIME, pptxFileName((options as GanttOptions)?.title));
     const imageUrl = `${SERVER_URL}/gantt-image/${imageId}.png`;
+    const pptxUrl = `${SERVER_URL}/gantt-pptx/${pptxId}.pptx`;
 
-    // Return successful response with both formats
+    // Return successful response with all formats
     res.json({
       success: true,
       taskCount: tasks.length,
@@ -453,6 +506,7 @@ app.post('/api/gantt', async (req: Request, res: Response) => {
       html: html,
       png: pngBase64,  // For test UI (local preview)
       pngUrl: imageUrl,  // For Perplexity and other clients
+      pptxUrl: pptxUrl,  // Editable PowerPoint download
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -823,5 +877,7 @@ app.listen(PORT, () => {
   console.log(`   POST /api/gantt - Generate Gantt diagram`);
   console.log(`   POST /api/validate - Validate tasks`);
   console.log(`   GET /api/examples - Get example data`);
+  console.log(`   GET /gantt-image/:id.png - Serve cached chart PNGs`);
+  console.log(`   GET /gantt-pptx/:id.pptx - Serve cached editable PowerPoint decks`);
   console.log(`   GET /health - Health check`);
 });

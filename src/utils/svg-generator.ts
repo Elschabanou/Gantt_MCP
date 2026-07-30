@@ -1,176 +1,98 @@
 import { readFileSync } from 'node:fs';
 import { GanttTask, GanttOptions } from '../types.js';
+import {
+  Row,
+  GroupBlock,
+  Geometry,
+  BarLabelPlan,
+  MilestoneLabelPlan,
+  GanttLayout,
+  computeGanttLayout,
+  riskColor,
+  truncate,
+  splitLabel,
+  PALETTE,
+  RISK_COLORS,
+  TEXT_LEFT,
+  CHART_LEFT_LABELED,
+  CHART_RIGHT,
+  GROUP_LABEL_GAP,
+  TITLE_Y,
+  HEADER_TOP,
+  HEADER_H,
+  RISK_TOP_GAP,
+  RISK_TITLE_H,
+  RISK_ROW_H,
+} from './gantt-layout.js';
 
-type SvgTask = GanttTask;
+// Background photo. Loaded once and cached as raw bytes; `null` means the
+// file was unavailable and callers fall back to a plain dark background.
+let bgImageBuffer: Buffer | null | undefined;
+export function getBackgroundImageBuffer(): Buffer | null {
+  if (bgImageBuffer !== undefined) return bgImageBuffer;
+  try {
+    const url = new URL('../../public/S24_2837.jpg', import.meta.url);
+    bgImageBuffer = readFileSync(url);
+  } catch {
+    bgImageBuffer = null;
+  }
+  return bgImageBuffer;
+}
 
-// Background photo, embedded as a base64 data URI so the SVG is self-contained
-// for sharp/librsvg rasterization (external file hrefs are blocked). Loaded once
-// and cached; `null` means the file was unavailable and we fall back to the
-// plain dark gradient background.
+// Base64 data URI variant, so the SVG stays self-contained for sharp/librsvg
+// rasterization (external file hrefs are blocked there).
 let bgImageDataUri: string | null | undefined;
 function getBackgroundDataUri(): string | null {
   if (bgImageDataUri !== undefined) return bgImageDataUri;
-  try {
-    const url = new URL('../../public/S24_2837.jpg', import.meta.url);
-    bgImageDataUri = `data:image/jpeg;base64,${readFileSync(url).toString('base64')}`;
-  } catch {
-    bgImageDataUri = null;
-  }
+  const buf = getBackgroundImageBuffer();
+  bgImageDataUri = buf ? `data:image/jpeg;base64,${buf.toString('base64')}` : null;
   return bgImageDataUri;
 }
 
-interface Row {
-  task: SvgTask;
-  colorIndex: number;
-  y: number;
-  height: number;
-  isMilestone: boolean;
-}
-
-interface GroupBlock {
-  label: string;
-  colorIndex: number;
-  startY: number;
-  endY: number;
-}
-
-interface Segment {
-  x0: number;
-  x1: number;
-  label: string;
-}
-
-interface Geometry {
-  x0: number;
-  x1: number;
-  centerY: number;
-  topY: number; // top edge of the bar / milestone marker
-  isMilestone: boolean;
-}
-
-// Layout constants
-const WIDTH = 1200;
-const TEXT_LEFT = 36;
-const CHART_LEFT_LABELED = 188; // left gutter reserved for group labels
-const GROUP_LABEL_GAP = 22; // gap between right-aligned group label and the chart start
-const CHART_LEFT_BARE = 44; // no group labels -> bars start further left
-const CHART_RIGHT = WIDTH - 32;
-const TITLE_Y = 46;
-const HEADER_TOP = 72;
-const HEADER_H = 30;
-const CONTENT_TOP = 128;
-const ROW_H = 34;
-const MS_ROW_H = 54;
-const GROUP_GAP = 22;
-const BOTTOM_PAD = 40;
-
-// Risk section below the chart
-const RISK_TOP_GAP = 26; // space between last row and the section divider
-const RISK_TITLE_H = 30; // divider -> baseline of the first risk entry
-const RISK_ROW_H = 21;
-
-const RISK_COLORS: Record<string, string> = {
-  high: '#ff5a5f',
-  medium: '#ffa62b',
-  low: '#ffd94a',
-};
-
-// Five-color palette: pink -> teal -> green -> amber -> violet (rotates per group)
-const PALETTE = [
-  { solid: '#e5217d', bright: '#ec2d86' }, // rosa
-  { solid: '#25565A', bright: '#25565A' }, // türkis
-  { solid: '#98c72f', bright: '#a9d13c' }, // grün
-  { solid: '#d9761f', bright: '#f0913a' }, // orange
-  { solid: '#6d4bd8', bright: '#8a6bf0' }, // violett
-];
-
 export class GanttSVGGenerator {
   static generate(tasks: GanttTask[], options?: GanttOptions): string {
-    const title = options?.title?.trim() || 'Project Timeline';
-    const barHeight = this.clamp(options?.bar_height ?? 22, 10, ROW_H - 8);
+    return this.renderFromLayout(computeGanttLayout(tasks, options));
+  }
 
-    const bounds = this.getBounds(tasks);
-    const span = Math.max(1, this.diffDays(bounds.minDate, bounds.maxDate) + 1);
+  private static renderFromLayout(layout: GanttLayout): string {
+    const { width, height: totalHeight, chartLeft, usable } = layout;
 
-    // Group tasks by `group`, preserving first-appearance order.
-    const order: string[] = [];
-    const groupMap = new Map<string, SvgTask[]>();
-    for (const task of tasks) {
-      const key = task.group ?? '';
-      if (!groupMap.has(key)) {
-        groupMap.set(key, []);
-        order.push(key);
-      }
-      groupMap.get(key)!.push(task);
-    }
-
-    // Collapse the left gutter when no group has an actual label.
-    const hasGroupLabels = order.some((key) => this.splitLabel(key)[0] !== '');
-    const chartLeft = hasGroupLabels ? CHART_LEFT_LABELED : CHART_LEFT_BARE;
-    const usable = CHART_RIGHT - chartLeft;
-
-    // Build sequential layout.
-    const rows: Row[] = [];
-    const blocks: GroupBlock[] = [];
-    let y = CONTENT_TOP;
-    order.forEach((key, groupIndex) => {
-      const colorIndex = groupIndex % PALETTE.length;
-      const startY = y;
-      for (const task of groupMap.get(key)!) {
-        const isMilestone = task.milestone === true;
-        const height = isMilestone ? MS_ROW_H : ROW_H;
-        rows.push({ task, colorIndex, y, height, isMilestone });
-        y += height;
-      }
-      blocks.push({ label: key, colorIndex, startY, endY: y });
-      y += GROUP_GAP;
-    });
-    const contentBottom = rows.length > 0 ? y - GROUP_GAP : CONTENT_TOP;
-
-    // Tasks the caller flagged as at risk, most severe first, get their own
-    // section below the chart (and an outline on their bar).
-    const riskTasks = tasks
-      .filter((task) => task.risk !== undefined)
-      .sort((a, b) => this.riskRank(b.risk) - this.riskRank(a.risk));
-    const riskSectionHeight =
-      riskTasks.length > 0 ? RISK_TOP_GAP + RISK_TITLE_H + riskTasks.length * RISK_ROW_H : 0;
-    const totalHeight = contentBottom + riskSectionHeight + BOTTOM_PAD;
-
-    const segments = this.buildSegments(bounds.minDate, bounds.maxDate, span, chartLeft, usable);
-
-    const gridlines = this.buildGridlines(bounds.minDate, bounds.maxDate, span, chartLeft, usable)
+    const gridlines = layout.gridlineXs
       .map(
         (x) =>
-          `<line x1="${this.fmt(x)}" y1="${HEADER_TOP}" x2="${this.fmt(x)}" y2="${contentBottom}" class="gridline" />`
+          `<line x1="${this.fmt(x)}" y1="${HEADER_TOP}" x2="${this.fmt(x)}" y2="${layout.contentBottom}" class="gridline" />`
       )
       .join('\n  ');
 
-    const headerSvg = this.renderHeader(segments, chartLeft, usable);
-    const groupsSvg = blocks.map((block) => this.renderGroup(block, chartLeft)).join('\n  ');
-    const rowsSvg = rows
-      .map((row) =>
-        row.isMilestone
-          ? this.renderMilestone(row, bounds.minDate, span, chartLeft, usable)
-          : this.renderBar(row, bounds.minDate, span, barHeight, chartLeft, usable)
-      )
+    const headerSvg = this.renderHeader(layout.segments, chartLeft, usable);
+    const groupsSvg = layout.blocks.map((block) => this.renderGroup(block, chartLeft)).join('\n  ');
+
+    const rowsSvg = layout.rows
+      .map((row) => {
+        const geom = layout.geometry.get(row.task.id);
+        const plan = layout.labels.get(row.task.id);
+        if (!geom || !plan) return '';
+        return row.isMilestone
+          ? this.renderMilestone(row, geom, plan as MilestoneLabelPlan)
+          : this.renderBar(row, geom, plan as BarLabelPlan, layout.barHeight);
+      })
       .join('\n  ');
 
-    const geometry = this.buildGeometry(rows, bounds.minDate, span, barHeight, chartLeft, usable);
-    const depsSvg = this.renderDependencies(rows, geometry);
-    const risksSvg = this.renderRiskSection(riskTasks, contentBottom, chartLeft);
+    const depsSvg = this.renderDependencies(layout.arrows);
+    const risksSvg = this.renderRiskSection(layout.riskTasks, layout.contentBottom, chartLeft);
 
     // Darkened photo background: full-bleed image + dark gradient overlay so the
     // white labels/bars stay readable. Falls back to the plain gradient if the
     // image can't be loaded.
     const bgUri = getBackgroundDataUri();
     const backgroundSvg = bgUri
-      ? `<image href="${bgUri}" xlink:href="${bgUri}" x="0" y="0" width="${WIDTH}" height="${totalHeight}" preserveAspectRatio="xMidYMid slice" />
-  <rect x="0" y="0" width="${WIDTH}" height="${totalHeight}" fill="url(#overlay)" />
+      ? `<image href="${bgUri}" xlink:href="${bgUri}" x="0" y="0" width="${width}" height="${totalHeight}" preserveAspectRatio="xMidYMid slice" />
+  <rect x="0" y="0" width="${width}" height="${totalHeight}" fill="url(#overlay)" />
   <rect x="0" y="0" width="${CHART_LEFT_LABELED}" height="${totalHeight}" fill="url(#left-scrim)" />`
-      : `<rect x="0" y="0" width="${WIDTH}" height="${totalHeight}" fill="url(#bg)" />`;
+      : `<rect x="0" y="0" width="${width}" height="${totalHeight}" fill="url(#bg)" />`;
 
     return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${WIDTH}" height="${totalHeight}" viewBox="0 0 ${WIDTH} ${totalHeight}">
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${width}" height="${totalHeight}" viewBox="0 0 ${width} ${totalHeight}">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#202128" />
@@ -240,7 +162,7 @@ export class GanttSVGGenerator {
 
   ${backgroundSvg}
 
-  <text x="${TEXT_LEFT}" y="${TITLE_Y}" class="title">${this.escapeXml(title)}</text>
+  <text x="${TEXT_LEFT}" y="${TITLE_Y}" class="title">${this.escapeXml(layout.title)}</text>
 
   ${gridlines}
 
@@ -256,7 +178,11 @@ export class GanttSVGGenerator {
 </svg>`;
   }
 
-  private static renderHeader(segments: Segment[], chartLeft: number, usable: number): string {
+  private static renderHeader(
+    segments: GanttLayout['segments'],
+    chartLeft: number,
+    usable: number
+  ): string {
     const bar = `<rect x="${chartLeft}" y="${HEADER_TOP}" width="${usable}" height="${HEADER_H}" rx="5" fill="url(#timeline)" />`;
     const dividers = segments
       .slice(1)
@@ -282,7 +208,7 @@ export class GanttSVGGenerator {
     // Right-align labels so they hug the chart start (accent bar) regardless of
     // length; the gap keeps them clear of the swimlane, so bars never overlap.
     const labelX = chartLeft - GROUP_LABEL_GAP;
-    const [name, subtitle] = this.splitLabel(block.label);
+    const [name, subtitle] = splitLabel(block.label);
     let text = '';
     if (name && subtitle) {
       text = `<text x="${labelX}" y="${this.fmt(centerY - 2)}" text-anchor="end" class="group-name">${this.escapeXml(name)}</text>
@@ -293,95 +219,46 @@ export class GanttSVGGenerator {
     return `${swimlane}\n  ${text}`;
   }
 
-  private static renderBar(
-    row: Row,
-    minDate: Date,
-    span: number,
-    barHeight: number,
-    chartLeft: number,
-    usable: number
-  ): string {
-    const start = this.parseDate(row.task.start);
-    const end = this.parseDate(row.task.end);
-    const startX = this.xForDate(minDate, span, start, chartLeft, usable);
-    const endX = this.xForDate(minDate, span, this.addDays(end, 1), chartLeft, usable);
-    const width = Math.max(8, endX - startX);
-    const barY = row.y + (row.height - barHeight) / 2;
-    const centerY = barY + barHeight / 2;
-    const textY = centerY + 4;
+  private static renderBar(row: Row, geom: Geometry, plan: BarLabelPlan, barHeight: number): string {
+    const startX = geom.x0;
+    const width = geom.x1 - geom.x0;
+    const barY = geom.topY;
+    const textY = geom.centerY + 4;
 
     const rect = `<rect x="${this.fmt(startX)}" y="${this.fmt(barY)}" width="${this.fmt(width)}" height="${barHeight}" rx="4" fill="url(#bar-${row.colorIndex})" />`;
     // At-risk bars get an outline in the risk colour, drawn just outside the
     // fill so it stays readable on every palette colour.
-    const riskColor = this.riskColor(row.task.risk);
-    const riskRing = riskColor
-      ? `\n  <rect x="${this.fmt(startX - 2)}" y="${this.fmt(barY - 2)}" width="${this.fmt(width + 4)}" height="${barHeight + 4}" rx="6" fill="none" stroke="${riskColor}" stroke-width="1.6" />`
+    const riskColorVal = riskColor(row.task.risk);
+    const riskRing = riskColorVal
+      ? `\n  <rect x="${this.fmt(startX - 2)}" y="${this.fmt(barY - 2)}" width="${this.fmt(width + 4)}" height="${barHeight + 4}" rx="6" fill="none" stroke="${riskColorVal}" stroke-width="1.6" />`
       : '';
-    const startLabel = this.fmtMonthYear(row.task.start);
-    const endLabel = this.fmtMonthYear(row.task.end);
-    const nameW = row.task.name.length * 6.8;
-    const nameText = (x: number, anchor: string) =>
-      `<text x="${this.fmt(x)}" y="${this.fmt(textY)}" text-anchor="${anchor}" class="bar-name">${this.escapeXml(row.task.name)}</text>`;
 
-    let texts: string;
-    if (nameW <= width - 14) {
-      // Name fits inside the bar.
-      const center = nameText((startX + endX) / 2, 'middle');
-      if (width >= 150 && nameW <= width - 84) {
-        // Wide enough: dates inside the ends, name centered.
-        texts = `<text x="${this.fmt(startX + 10)}" y="${this.fmt(textY)}" text-anchor="start" class="bar-date">${startLabel}</text>
-  ${center}
-  <text x="${this.fmt(endX - 10)}" y="${this.fmt(textY)}" text-anchor="end" class="bar-date">${endLabel}</text>`;
-      } else {
-        // Dates just outside the ends, name centered inside. Near the chart
-        // edges there is no room outside, and moving a date inside would run
-        // into the centered name — so that date is dropped instead.
-        const startFits = startX - 8 > chartLeft + 32;
-        const endFits = endX + 8 < CHART_RIGHT - 32;
-        const startDate = startFits
-          ? `<text x="${this.fmt(startX - 8)}" y="${this.fmt(textY)}" text-anchor="end" class="bar-date">${startLabel}</text>\n  `
-          : '';
-        const endDate = endFits
-          ? `\n  <text x="${this.fmt(endX + 8)}" y="${this.fmt(textY)}" text-anchor="start" class="bar-date">${endLabel}</text>`
-          : '';
-        texts = `${startDate}${center}${endDate}`;
-      }
-    } else {
-      // Name too long for the bar: place it beside the bar, no dates (avoids overlap).
-      if (endX + 8 + nameW <= CHART_RIGHT) {
-        texts = nameText(endX + 8, 'start');
-      } else {
-        texts = nameText(startX - 8, 'end');
-      }
-    }
+    const nameText = `<text x="${this.fmt(plan.name.x)}" y="${this.fmt(textY)}" text-anchor="${plan.name.anchor}" class="bar-name">${this.escapeXml(row.task.name)}</text>`;
+    const startDateText = plan.startDate
+      ? `<text x="${this.fmt(plan.startDate.x)}" y="${this.fmt(textY)}" text-anchor="${plan.startDate.anchor}" class="bar-date">${this.escapeXml(plan.startLabel)}</text>`
+      : '';
+    const endDateText = plan.endDate
+      ? `<text x="${this.fmt(plan.endDate.x)}" y="${this.fmt(textY)}" text-anchor="${plan.endDate.anchor}" class="bar-date">${this.escapeXml(plan.endLabel)}</text>`
+      : '';
+
+    const texts = plan.nameInsideBar
+      ? [startDateText, nameText, endDateText].filter(Boolean).join('\n  ')
+      : nameText;
+
     return `${rect}${riskRing}\n  ${texts}`;
   }
 
-  private static renderMilestone(
-    row: Row,
-    minDate: Date,
-    span: number,
-    chartLeft: number,
-    usable: number
-  ): string {
+  private static renderMilestone(row: Row, geom: Geometry, plan: MilestoneLabelPlan): string {
     const color = PALETTE[row.colorIndex];
-    const date = this.parseDate(row.task.start);
-    const mx = this.clamp(
-      chartLeft + ((this.diffDays(minDate, date) + 0.5) / span) * usable,
-      chartLeft,
-      CHART_RIGHT
-    );
-    const ty = row.y + 8;
-    // Keep labels inside the canvas near the edges.
-    const anchor = mx > CHART_RIGHT - 60 ? 'end' : mx < chartLeft + 60 ? 'start' : 'middle';
-    const tx = anchor === 'end' ? mx + 6 : anchor === 'start' ? mx - 6 : mx;
-    const riskColor = this.riskColor(row.task.risk);
-    const riskStroke = riskColor
-      ? ` stroke="${riskColor}" stroke-width="1.6" stroke-linejoin="round"`
+    const mx = geom.x0;
+    const ty = geom.topY;
+    const riskColorVal = riskColor(row.task.risk);
+    const riskStroke = riskColorVal
+      ? ` stroke="${riskColorVal}" stroke-width="1.6" stroke-linejoin="round"`
       : '';
     const triangle = `<polygon points="${this.fmt(mx)},${ty} ${this.fmt(mx - 7)},${ty + 13} ${this.fmt(mx + 7)},${ty + 13}" fill="${color.bright}"${riskStroke} />`;
-    const label = `<text x="${this.fmt(tx)}" y="${ty + 29}" text-anchor="${anchor}" class="ms-label">${this.escapeXml(row.task.name)}</text>`;
-    const dateText = `<text x="${this.fmt(tx)}" y="${ty + 44}" text-anchor="${anchor}" class="ms-date">${this.fmtMonthYear(row.task.start)}</text>`;
+    const label = `<text x="${this.fmt(plan.tx)}" y="${ty + 29}" text-anchor="${plan.anchor}" class="ms-label">${this.escapeXml(plan.label)}</text>`;
+    const dateText = `<text x="${this.fmt(plan.tx)}" y="${ty + 44}" text-anchor="${plan.anchor}" class="ms-date">${this.escapeXml(plan.dateLabel)}</text>`;
     return `${triangle}\n  ${label}\n  ${dateText}`;
   }
 
@@ -392,7 +269,7 @@ export class GanttSVGGenerator {
    * original footprint.
    */
   private static renderRiskSection(
-    riskTasks: SvgTask[],
+    riskTasks: GanttTask[],
     contentBottom: number,
     chartLeft: number
   ): string {
@@ -409,7 +286,7 @@ export class GanttSVGGenerator {
     ];
 
     riskTasks.forEach((task, index) => {
-      const color = this.riskColor(task.risk) ?? RISK_COLORS.medium;
+      const color = riskColor(task.risk) ?? RISK_COLORS.medium;
       const baseline = dividerY + RISK_TITLE_H + index * RISK_ROW_H + 12;
       const iconY = baseline - 9;
       // Warning triangle, matching the milestone marker's visual language.
@@ -420,12 +297,12 @@ export class GanttSVGGenerator {
         `<text x="${x + 18}" y="${this.fmt(baseline)}" class="risk-level" fill="${color}">${(task.risk ?? '').toUpperCase()}</text>`
       );
       parts.push(
-        `<text x="${nameX}" y="${this.fmt(baseline)}" class="risk-task">${this.escapeXml(this.truncate(task.name, 30))}</text>`
+        `<text x="${nameX}" y="${this.fmt(baseline)}" class="risk-task">${this.escapeXml(truncate(task.name, 30))}</text>`
       );
       const note = task.risk_note?.trim();
       if (note) {
         parts.push(
-          `<text x="${noteX}" y="${this.fmt(baseline)}" class="risk-note">${this.escapeXml(this.truncate(note, Math.floor((CHART_RIGHT - noteX) / 6.4)))}</text>`
+          `<text x="${noteX}" y="${this.fmt(baseline)}" class="risk-note">${this.escapeXml(truncate(note, Math.floor((CHART_RIGHT - noteX) / 6.4)))}</text>`
         );
       }
     });
@@ -433,148 +310,15 @@ export class GanttSVGGenerator {
     return parts.join('\n  ');
   }
 
-  private static riskColor(risk?: string): string | undefined {
-    return risk ? RISK_COLORS[risk] : undefined;
-  }
-
-  private static riskRank(risk?: string): number {
-    return risk === 'high' ? 3 : risk === 'medium' ? 2 : risk === 'low' ? 1 : 0;
-  }
-
-  private static truncate(text: string, maxChars: number): string {
-    return text.length <= maxChars ? text : `${text.slice(0, Math.max(1, maxChars - 1)).trimEnd()}…`;
-  }
-
-  /**
-   * Bar/milestone geometry per task id, used to anchor dependency arrows.
-   * Mirrors the x/y math in renderBar / renderMilestone.
-   */
-  private static buildGeometry(
-    rows: Row[],
-    minDate: Date,
-    span: number,
-    barHeight: number,
-    chartLeft: number,
-    usable: number
-  ): Map<string, Geometry> {
-    const geometry = new Map<string, Geometry>();
-    for (const row of rows) {
-      if (row.isMilestone) {
-        const date = this.parseDate(row.task.start);
-        const mx = this.clamp(
-          chartLeft + ((this.diffDays(minDate, date) + 0.5) / span) * usable,
-          chartLeft,
-          CHART_RIGHT
-        );
-        const topY = row.y + 8;
-        geometry.set(row.task.id, {
-          x0: mx,
-          x1: mx,
-          centerY: topY + 6.5,
-          topY,
-          isMilestone: true,
-        });
-      } else {
-        const start = this.parseDate(row.task.start);
-        const end = this.parseDate(row.task.end);
-        const startX = this.xForDate(minDate, span, start, chartLeft, usable);
-        const endX = this.xForDate(minDate, span, this.addDays(end, 1), chartLeft, usable);
-        const width = Math.max(8, endX - startX);
-        const barY = row.y + (row.height - barHeight) / 2;
-        geometry.set(row.task.id, {
-          x0: startX,
-          x1: startX + width,
-          centerY: barY + barHeight / 2,
-          topY: barY,
-          isMilestone: false,
-        });
-      }
-    }
-    return geometry;
-  }
-
   /**
    * Thin orthogonal arrows from each dependency's bar to its dependent task's
-   * bar (task.dependencies is a comma-separated list of predecessor task ids).
+   * bar. Point paths come from the shared layout (`layout.arrows`); this just
+   * rounds the corners and serializes each one as an SVG path.
    */
-  private static renderDependencies(rows: Row[], geometry: Map<string, Geometry>): string {
-    const arrows: string[] = [];
-    for (const row of rows) {
-      const raw = row.task.dependencies;
-      if (!raw) continue;
-      const target = geometry.get(row.task.id);
-      if (!target) continue;
-      for (const depId of raw.split(',').map((id) => id.trim()).filter(Boolean)) {
-        if (depId === row.task.id) continue;
-        const source = geometry.get(depId);
-        if (!source) continue;
-        arrows.push(this.renderDependencyArrow(source, target));
-      }
-    }
-    return arrows.join('\n  ');
-  }
-
-  /**
-   * Routes finish-to-start as right-angle segments: leave the predecessor's
-   * right edge, step down/up in the gap between rows, then enter the successor
-   * from the left (or from above, for a milestone marker). When the successor
-   * starts left of the predecessor's end there is no room for a single elbow,
-   * so the line detours through the midpoint between both rows.
-   */
-  private static renderDependencyArrow(source: Geometry, target: Geometry): string {
-    const STUB = 11; // horizontal breathing room before/after a corner
-    const x1 = source.x1;
-    const y1 = source.centerY;
-
-    let points: Array<[number, number]>;
-
-    if (target.isMilestone) {
-      // Enter the triangle from above so the arrowhead sits on its apex.
-      const mx = target.x0;
-      const my = target.topY - 5;
-      points =
-        mx >= x1 + STUB
-          ? [
-              [x1, y1],
-              [mx, y1],
-              [mx, my],
-            ]
-          : [
-              [x1, y1],
-              [x1 + STUB, y1],
-              [x1 + STUB, (y1 + my) / 2],
-              [mx, (y1 + my) / 2],
-              [mx, my],
-            ];
-    } else {
-      const x2 = target.x0 - 5;
-      const y2 = target.centerY;
-      if (Math.abs(y2 - y1) < 0.5) {
-        points = [
-          [x1, y1],
-          [x2, y2],
-        ];
-      } else if (x2 - STUB > x1 + 2) {
-        points = [
-          [x1, y1],
-          [x2 - STUB, y1],
-          [x2 - STUB, y2],
-          [x2, y2],
-        ];
-      } else {
-        const midY = (y1 + y2) / 2;
-        points = [
-          [x1, y1],
-          [x1 + STUB, y1],
-          [x1 + STUB, midY],
-          [x2 - STUB, midY],
-          [x2 - STUB, y2],
-          [x2, y2],
-        ];
-      }
-    }
-
-    return `<path d="${this.orthPath(points)}" class="dep-line" marker-end="url(#dep-arrow)" />`;
+  private static renderDependencies(arrows: Array<Array<[number, number]>>): string {
+    return arrows
+      .map((points) => `<path d="${this.orthPath(points)}" class="dep-line" marker-end="url(#dep-arrow)" />`)
+      .join('\n  ');
   }
 
   /**
@@ -604,133 +348,6 @@ export class GanttSVGGenerator {
     }
     const last = pts[pts.length - 1];
     return `${d} L ${this.fmt(last[0])},${this.fmt(last[1])}`;
-  }
-
-  private static buildSegments(
-    minDate: Date,
-    maxDate: Date,
-    span: number,
-    chartLeft: number,
-    usable: number
-  ): Segment[] {
-    const segments: Segment[] = [];
-    const xFor = (d: Date) => this.xForDate(minDate, span, d, chartLeft, usable);
-    const yearMode = span > 366;
-
-    if (yearMode) {
-      for (let year = minDate.getFullYear(); year <= maxDate.getFullYear(); year++) {
-        const segStart = year === minDate.getFullYear() ? minDate : new Date(year, 0, 1);
-        const segEndExcl =
-          year === maxDate.getFullYear() ? this.addDays(maxDate, 1) : new Date(year + 1, 0, 1);
-        segments.push({ x0: xFor(segStart), x1: xFor(segEndExcl), label: String(year) });
-      }
-    } else {
-      const multiYear = minDate.getFullYear() !== maxDate.getFullYear();
-      const last = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
-      let cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1);
-      while (cursor <= last) {
-        const isFirst =
-          cursor.getFullYear() === minDate.getFullYear() && cursor.getMonth() === minDate.getMonth();
-        const isLast =
-          cursor.getFullYear() === last.getFullYear() && cursor.getMonth() === last.getMonth();
-        const nextMonth = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-        const segStart = isFirst ? minDate : new Date(cursor);
-        const segEndExcl = isLast ? this.addDays(maxDate, 1) : nextMonth;
-        const monthName = cursor.toLocaleString('en-US', { month: 'short' });
-        const label = multiYear
-          ? `${monthName} '${String(cursor.getFullYear()).slice(2)}`
-          : monthName;
-        segments.push({ x0: xFor(segStart), x1: xFor(segEndExcl), label });
-        cursor = nextMonth;
-      }
-    }
-    return segments;
-  }
-
-  /**
-   * X positions for the dashed vertical gridlines: at the start of every month
-   * in month view, or at the start of every quarter (Jan/Apr/Jul/Oct) in year
-   * view. Boundaries at the very left/right chart edges are skipped.
-   */
-  private static buildGridlines(
-    minDate: Date,
-    maxDate: Date,
-    span: number,
-    chartLeft: number,
-    usable: number
-  ): number[] {
-    const xs: number[] = [];
-    const maxExcl = this.addDays(maxDate, 1);
-    const yearMode = span > 366;
-
-    if (yearMode) {
-      for (let year = minDate.getFullYear(); year <= maxDate.getFullYear(); year++) {
-        for (const month of [0, 3, 6, 9]) {
-          const d = new Date(year, month, 1);
-          if (d > minDate && d < maxExcl) {
-            xs.push(this.xForDate(minDate, span, d, chartLeft, usable));
-          }
-        }
-      }
-    } else {
-      let cursor = new Date(minDate.getFullYear(), minDate.getMonth() + 1, 1);
-      while (cursor < maxExcl) {
-        xs.push(this.xForDate(minDate, span, cursor, chartLeft, usable));
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
-      }
-    }
-    return xs;
-  }
-
-  private static splitLabel(label: string): [string, string] {
-    if (!label) return ['', ''];
-    const separator = label.includes('/') ? '/' : label.includes('\n') ? '\n' : '';
-    if (!separator) return [label.trim(), ''];
-    const idx = label.indexOf(separator);
-    return [label.slice(0, idx).trim(), label.slice(idx + 1).trim()];
-  }
-
-  private static xForDate(
-    minDate: Date,
-    span: number,
-    date: Date,
-    chartLeft: number,
-    usable: number
-  ): number {
-    const x = chartLeft + (this.diffDays(minDate, date) / span) * usable;
-    return this.clamp(x, chartLeft, CHART_RIGHT);
-  }
-
-  private static getBounds(tasks: SvgTask[]): { minDate: Date; maxDate: Date } {
-    const dates = tasks.flatMap((task) => [this.parseDate(task.start), this.parseDate(task.end)]);
-    const minDate = new Date(Math.min(...dates.map((date) => date.getTime())));
-    const maxDate = new Date(Math.max(...dates.map((date) => date.getTime())));
-    return { minDate, maxDate };
-  }
-
-  private static parseDate(value: string): Date {
-    const [year, month, day] = value.split('-').map(Number);
-    return new Date(year, (month || 1) - 1, day || 1);
-  }
-
-  private static addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-  }
-
-  private static diffDays(start: Date, end: Date): number {
-    const msPerDay = 24 * 60 * 60 * 1000;
-    const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-    const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-    return Math.round((endUtc - startUtc) / msPerDay);
-  }
-
-  private static fmtMonthYear(value: string): string {
-    const [year, month] = value.split('-');
-    return `${month}/${year.slice(2)}`;
-  }
-
-  private static clamp(value: number, min: number, max: number): number {
-    return Math.min(max, Math.max(min, value));
   }
 
   private static fmt(value: number): string {

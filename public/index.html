@@ -567,6 +567,16 @@
               Download as HTML File
             </button>
           </div>
+
+          <div style="margin-top: 10px">
+            <button
+              class="btn-success"
+              style="width: 100%"
+              onclick="downloadPPTX()"
+            >
+              Download as PowerPoint (.pptx)
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -589,6 +599,7 @@
     <script>
       let currentHTML = "";
       let currentPNG = "";
+      let currentPPTXUrl = "";
 
       // Load example data
       async function loadExample(type) {
@@ -627,6 +638,7 @@
           if (result.success) {
             currentHTML = result.html;
             currentPNG = result.png || "";
+            currentPPTXUrl = result.pptxUrl || "";
             showPreview(result.png, result.html);
             showPNGCode(result.png);
             showHTMLCode(result.html);
@@ -801,6 +813,18 @@
         link.download = `gantt-${new Date().getTime()}.html`;
         link.click();
         URL.revokeObjectURL(url);
+      }
+
+      // Download PowerPoint (server already sends Content-Disposition: attachment)
+      function downloadPPTX() {
+        if (!currentPPTXUrl) {
+          alert("Generate a diagram first!");
+          return;
+        }
+        const link = document.createElement("a");
+        link.href = currentPPTXUrl;
+        link.download = `gantt-${new Date().getTime()}.pptx`;
+        link.click();
       }
 
       // Show loading
