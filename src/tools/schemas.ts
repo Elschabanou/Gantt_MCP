@@ -35,7 +35,28 @@ export const GanttOptionsSchema = z.object({
   title: z.string().optional(),
 });
 
+// Some MCP clients (observed with Microsoft Copilot Studio's generative
+// orchestration) reliably fill flat object parameters but fail to fill
+// array-of-objects parameters — the model ends up emitting a clarifying
+// question string instead of structured task data. As a workaround, accept
+// `tasks` as a JSON-encoded string in addition to a native array: a plain
+// string is a parameter shape those clients can fill correctly. Native array
+// input (used by the direct MCP client and README examples) keeps working
+// unchanged.
+const TasksInputSchema = z.preprocess((val) => {
+  if (typeof val === 'string') {
+    try {
+      return JSON.parse(val);
+    } catch {
+      // Leave the raw string in place; the array schema below will reject it
+      // with a clear "expected array, received string" style error.
+      return val;
+    }
+  }
+  return val;
+}, z.array(GanttTaskSchema).nonempty('At least one task is required'));
+
 export const CreateGanttToolSchema = z.object({
-  tasks: z.array(GanttTaskSchema).nonempty('At least one task is required'),
+  tasks: TasksInputSchema,
   options: GanttOptionsSchema.optional(),
 });
