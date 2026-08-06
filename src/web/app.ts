@@ -190,7 +190,7 @@ app.post('/mcp', requireApiKey, async (req: Request, res: Response) => {
             description: `Creates a Gantt diagram from task definitions.
     
 Input should be a JSON object with:
-- tasks: Array of task objects with required fields (id, name, start, end)
+- tasks: Array of task objects with required fields (id, name, start, end). If your platform cannot construct a native array-of-objects parameter, pass this as a single JSON-encoded string of that same array instead (e.g. "[{\\"id\\":\\"1\\",\\"name\\":\\"...\\",\\"start\\":\\"2024-01-01\\",\\"end\\":\\"2024-01-15\\"}]").
 - options: Optional Gantt display options (title, bar_height)
 
 Each task must have:
@@ -219,35 +219,45 @@ Returns a static PNG image preview of the Gantt chart, plus a download link to a
               type: 'object',
               properties: {
                 tasks: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      id: { type: 'string', description: 'Unique task identifier' },
-                      name: { type: 'string', description: 'Task name' },
-                      start: { type: 'string', description: 'Start date (YYYY-MM-DD format)' },
-                      end: { type: 'string', description: 'End date (YYYY-MM-DD format)' },
-                      progress: { type: 'number', description: 'Progress 0-100%', minimum: 0, maximum: 100 },
-                      group: { type: 'string', description: 'Project/swimlane label; tasks sharing a group share a color. Use "Name / Subtitle" for a two-line label.' },
-                      milestone: { type: 'boolean', description: 'Render as a triangle marker (uses start as the date) instead of a bar' },
-                      dependencies: { type: 'string', description: 'Comma-separated dependent task IDs' },
-                      priority: { type: 'string', enum: ['high', 'medium', 'low'] },
-                      resource: { type: 'string', description: 'Resource or person assignment' },
-                      risk: {
-                        type: 'string',
-                        enum: ['low', 'medium', 'high'],
-                        description:
-                          'Flag this task as at risk. Outlines the bar in the risk colour and lists the task in a "Risks" section below the chart. Only set it for tasks that really are at risk.',
-                      },
-                      risk_note: {
-                        type: 'string',
-                        description:
-                          'Short reason for the risk (e.g. "Depends on external supplier"), shown next to the task in the risk section. Requires `risk`.',
+                  description:
+                    'Array of task definitions. If your platform cannot fill a native array-of-objects parameter, provide a JSON-encoded string of the same array instead.',
+                  oneOf: [
+                    {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', description: 'Unique task identifier' },
+                          name: { type: 'string', description: 'Task name' },
+                          start: { type: 'string', description: 'Start date (YYYY-MM-DD format)' },
+                          end: { type: 'string', description: 'End date (YYYY-MM-DD format)' },
+                          progress: { type: 'number', description: 'Progress 0-100%', minimum: 0, maximum: 100 },
+                          group: { type: 'string', description: 'Project/swimlane label; tasks sharing a group share a color. Use "Name / Subtitle" for a two-line label.' },
+                          milestone: { type: 'boolean', description: 'Render as a triangle marker (uses start as the date) instead of a bar' },
+                          dependencies: { type: 'string', description: 'Comma-separated dependent task IDs' },
+                          priority: { type: 'string', enum: ['high', 'medium', 'low'] },
+                          resource: { type: 'string', description: 'Resource or person assignment' },
+                          risk: {
+                            type: 'string',
+                            enum: ['low', 'medium', 'high'],
+                            description:
+                              'Flag this task as at risk. Outlines the bar in the risk colour and lists the task in a "Risks" section below the chart. Only set it for tasks that really are at risk.',
+                          },
+                          risk_note: {
+                            type: 'string',
+                            description:
+                              'Short reason for the risk (e.g. "Depends on external supplier"), shown next to the task in the risk section. Requires `risk`.',
+                          },
+                        },
+                        required: ['id', 'name', 'start', 'end'],
                       },
                     },
-                    required: ['id', 'name', 'start', 'end'],
-                  },
-                  description: 'Array of task definitions',
+                    {
+                      type: 'string',
+                      description:
+                        'JSON-encoded string of the same task array — use this form if a native array-of-objects parameter cannot be constructed.',
+                    },
+                  ],
                 },
                 options: {
                   type: 'object',
