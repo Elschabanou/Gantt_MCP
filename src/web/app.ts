@@ -10,6 +10,7 @@ import { GanttPNGGenerator } from '../utils/png-generator.js';
 import { GanttPPTXGenerator } from '../utils/pptx-generator.js';
 import { GanttTask, GanttOptions } from '../types.js';
 import { CreateGanttToolSchema } from '../tools/schemas.js';
+import { normalizeRisks } from '../utils/risk-normalizer.js';
 import { requireApiKey } from '../middleware/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -203,8 +204,8 @@ Each task must have:
 - dependencies: Comma-separated task IDs this task depends on (optional). Drawn as thin arrows from each predecessor to this task.
 - priority: 'high', 'medium', or 'low' (optional)
 - resource: Resource/person assignment (optional)
-- risk: 'low', 'medium', or 'high' (optional). Marks the task as at risk: its bar gets a colored outline and it is listed in a "Risks" section below the chart. Use it to point out schedule risks such as tight deadlines, blocking dependencies or overloaded resources.
-- risk_note: Short reason for the risk, shown next to the task in the risk section (optional, requires risk)
+- risk: 'low', 'medium', or 'high' (optional) — or an empty string "" for the normal case of a task that carries no notable risk. Marks the task as at risk: its bar gets a colored outline and it is listed in a "Risks" section below the chart. Only flag the few tasks that really are at risk (tight deadlines, blocking dependencies, overloaded resources); a plan where every task is flagged conveys nothing. Never set a default risk level just to fill the field.
+- risk_note: Short reason for the risk, shown next to the task in the risk section (optional, requires risk). A risk without a risk_note is ignored and the task is not listed as at risk — so either explain the risk or leave both fields empty.
 
 Options may include:
 - title: Chart title shown at the top left (default: "Project Timeline")
@@ -239,14 +240,14 @@ Returns a static PNG image preview of the Gantt chart, plus a download link to a
                           resource: { type: 'string', description: 'Resource or person assignment' },
                           risk: {
                             type: 'string',
-                            enum: ['low', 'medium', 'high'],
+                            enum: ['', 'low', 'medium', 'high'],
                             description:
-                              'Flag this task as at risk. Outlines the bar in the risk colour and lists the task in a "Risks" section below the chart. Only set it for tasks that really are at risk.',
+                              'Flag this task as at risk. Outlines the bar in the risk colour and lists the task in a "Risks" section below the chart. Use "" (the normal case) for any task without a notable risk — never a default level just to fill the field. Only the few genuinely endangered tasks should carry a level, and each of those needs a risk_note.',
                           },
                           risk_note: {
                             type: 'string',
                             description:
-                              'Short reason for the risk (e.g. "Depends on external supplier"), shown next to the task in the risk section. Requires `risk`.',
+                              'Short reason for the risk (e.g. "Depends on external supplier"), shown next to the task in the risk section. Requires `risk`; a risk without this note is ignored. Use "" when risk is "".',
                           },
                         },
                         required: ['id', 'name', 'start', 'end'],
@@ -297,9 +298,12 @@ Returns a static PNG image preview of the Gantt chart, plus a download link to a
         // Validate input schema
         const validatedInput = CreateGanttToolSchema.parse(args);
 
+        // Ignore risk flags without a reason — see normalizeRisks().
+        const { tasks, droppedRisks } = normalizeRisks(validatedInput.tasks as GanttTask[]);
+
         // Validate tasks
         const validator = new GanttValidator();
-        const validationResult = validator.validate(validatedInput.tasks as GanttTask[]);
+        const validationResult = validator.validate(tasks);
 
         if (!validationResult.valid) {
           const errorMessages = validationResult.errors
@@ -319,8 +323,8 @@ Returns a static PNG image preview of the Gantt chart, plus a download link to a
           // Generate the PNG preview and the editable PowerPoint in parallel
           // (both are pure functions over the same tasks/options).
           const [pngBuffer, pptxBuffer] = await Promise.all([
-            GanttPNGGenerator.generate(validatedInput.tasks as GanttTask[], validatedInput.options),
-            GanttPPTXGenerator.generate(validatedInput.tasks as GanttTask[], validatedInput.options),
+            GanttPNGGenerator.generate(tasks, validatedInput.options),
+            GanttPPTXGenerator.generate(tasks, validatedInput.options),
           ]);
 
           const imageId = cacheAsset(pngBuffer, 'image/png');
@@ -330,7 +334,12 @@ Returns a static PNG image preview of the Gantt chart, plus a download link to a
 
           // Build response text
           let responseText = `✅ Gantt diagram generated successfully!\n\n`;
-          responseText += `📊 Tasks: ${validatedInput.tasks.length}\n`;
+          responseText += `📊 Tasks: ${tasks.length}\n`;
+
+          if (droppedRisks.length > 0) {
+            responseText += `\nℹ️  Risk flag ignored on ${droppedRisks.length} task(s) because \`risk_note\` was empty: ${droppedRisks
+              .join(', ')}\n   Only flag tasks that really are at risk, and always give a short \`risk_note\` explaining why.\n`;
+          }
 
           if (validationResult.warnings.length > 0) {
             responseText += `\n⚠️  Warnings:\n`;

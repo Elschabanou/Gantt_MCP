@@ -4,7 +4,57 @@ import { z } from 'zod';
  * JSON Schema definitions using Zod
  */
 
-export const GanttTaskSchema = z.object({
+// Clients that are told to always emit every optional key (e.g. the Copilot
+// Studio system prompt) fill unused fields with placeholders instead of leaving
+// them out. Treat those as "not set" so an empty `risk` doesn't blow up the
+// enum and an empty `resource`/`group` doesn't render as a stray label.
+const BLANK_PLACEHOLDERS = new Set([
+  '',
+  '-',
+  '--',
+  'n/a',
+  'na',
+  'none',
+  'null',
+  'undefined',
+  'keine',
+  'kein',
+]);
+
+const OPTIONAL_STRING_FIELDS = [
+  'dependencies',
+  'priority',
+  'resource',
+  'group',
+  'risk',
+  'risk_note',
+] as const;
+
+const ENUM_FIELDS = ['priority', 'risk'] as const;
+
+function normalizeTaskInput(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw;
+
+  const task: Record<string, unknown> = { ...(raw as Record<string, unknown>) };
+
+  for (const field of OPTIONAL_STRING_FIELDS) {
+    const value = task[field];
+    if (typeof value === 'string' && BLANK_PLACEHOLDERS.has(value.trim().toLowerCase())) {
+      delete task[field];
+    }
+  }
+
+  // Enum values arrive capitalised often enough ("High", "MEDIUM") to be worth
+  // folding here rather than failing validation over casing.
+  for (const field of ENUM_FIELDS) {
+    const value = task[field];
+    if (typeof value === 'string') task[field] = value.trim().toLowerCase();
+  }
+
+  return task;
+}
+
+export const GanttTaskSchema = z.preprocess(normalizeTaskInput, z.object({
   id: z.string().min(1, 'Task ID is required'),
   name: z.string().min(1, 'Task name is required'),
   start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be in YYYY-MM-DD format'),
@@ -17,7 +67,7 @@ export const GanttTaskSchema = z.object({
   milestone: z.boolean().optional(),
   risk: z.enum(['low', 'medium', 'high']).optional(),
   risk_note: z.string().optional(),
-});
+}));
 
 export const GanttOptionsSchema = z.object({
   view_mode: z.enum(['Day', 'Week', 'Month', 'Year']).optional(),
